@@ -1,0 +1,291 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  MANAGER
+  TESTER
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum RunStatus {
+  DRAFT
+  IN_PROGRESS
+  COMPLETED
+  ARCHIVED
+}
+
+enum ExecStatus {
+  PENDING
+  PASSED
+  FAILED
+  BLOCKED
+  SKIPPED
+}
+
+enum MilestoneStatus {
+  PLANNED
+  ACTIVE
+  RELEASED
+  CANCELLED
+}
+
+enum ActivityAction {
+  CASE_CREATED
+  CASE_UPDATED
+  CASE_CLONED
+  RUN_CREATED
+  RUN_STATUS_CHANGED
+  EXECUTION_STATUS_CHANGED
+  EXECUTION_ASSIGNED
+  COMMENT_ADDED
+  JIRA_LINKED
+  ATTACHMENT_ADDED
+}
+
+enum TestLevel {
+  SMOKE
+  SANITY
+  REGRESSION
+  ADVANCED
+  EXPLORATORY
+}
+
+enum Platform {
+  WEB
+  WINDOWS
+  MACOS
+  ANDROID
+  IOS
+}
+
+enum Connectivity {
+  ONLINE
+  OFFLINE
+}
+
+model Company {
+  id          String     @id @default(cuid())
+  name        String
+  slug        String     @unique
+  createdAt   DateTime   @default(now())
+  users       User[]
+  projects    Project[]
+  jiraConfig  JiraConfig?
+}
+
+model User {
+  id              String           @id @default(cuid())
+  email           String           @unique
+  name            String
+  passwordHash    String
+  role            Role             @default(TESTER)
+  companyId       String
+  company         Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt       DateTime         @default(now())
+  runs            TestRun[]
+  executions      TestExecution[]
+  assignedExecs   TestExecution[]  @relation("ExecAssignee")
+  attachments     Attachment[]
+  comments        Comment[]
+  activities      ActivityLog[]
+  apiTokens       ApiToken[]
+}
+
+model ApiToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  tokenHash String   @unique
+  lastUsedAt DateTime?
+  createdAt DateTime @default(now())
+}
+
+model Project {
+  id                    String       @id @default(cuid())
+  companyId             String
+  company               Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  key                   String
+  name                  String
+  description           String?
+  jiraProjectKey        String?
+  jiraProjectName       String?
+  jiraIssueType         String?
+  jiraParentEpicKey     String?
+  jiraParentEpicSummary String?
+  createdAt             DateTime     @default(now())
+  suites                TestSuite[]
+  runs                  TestRun[]
+  milestones            Milestone[]
+  activities            ActivityLog[]
+
+  @@unique([companyId, key])
+}
+
+// Company-wide Jira credentials + templates. Per-project targeting (which Jira
+// project to file bugs into, optional parent epic, issue type) lives on Project.
+model JiraConfig {
+  id                  String   @id @default(cuid())
+  companyId           String   @unique
+  company             Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  baseUrl             String
+  email               String
+  apiToken            String
+  defaultIssueType    String   @default("Bug")
+  summaryTemplate     String?
+  descriptionTemplate String?
+  enabled             Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model Milestone {
+  id          String          @id @default(cuid())
+  projectId   String
+  project     Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  status      MilestoneStatus @default(PLANNED)
+  dueDate     DateTime?
+  createdAt   DateTime        @default(now())
+  runs        TestRun[]
+}
+
+model TestSuite {
+  id          String      @id @default(cuid())
+  projectId   String
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parentId    String?
+  parent      TestSuite?  @relation("SuiteTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children    TestSuite[] @relation("SuiteTree")
+  name        String
+  description String?
+  createdAt   DateTime    @default(now())
+  cases       TestCase[]
+}
+
+model TestCase {
+  id               String          @id @default(cuid())
+  suiteId          String
+  suite            TestSuite       @relation(fields: [suiteId], references: [id], onDelete: Cascade)
+  title            String
+  preconditions    String?
+  priority         Priority        @default(MEDIUM)
+  testLevel        TestLevel       @default(REGRESSION)
+  tags             String[]        @default([])
+  steps            Json            @default("[]")
+  estimatedMinutes Int?
+  requirements     String[]        @default([])
+  cloneOfId        String?
+  cloneOf          TestCase?       @relation("CaseClone", fields: [cloneOfId], references: [id])
+  clones           TestCase[]      @relation("CaseClone")
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  executions       TestExecution[]
+  attachments      Attachment[]
+  comments         Comment[]
+}
+
+model TestRun {
+  id           String          @id @default(cuid())
+  projectId    String
+  project      Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId  String?
+  milestone    Milestone?      @relation(fields: [milestoneId], references: [id])
+  name         String
+  description  String?
+  environment  String?
+  platform     Platform?
+  connectivity Connectivity?
+  locale       String?
+  dueDate      DateTime?
+  status       RunStatus       @default(IN_PROGRESS)
+  createdById  String
+  createdBy    User            @relation(fields: [createdById], references: [id])
+  createdAt    DateTime        @default(now())
+  completedAt  DateTime?
+  executions   TestExecution[]
+  comments     Comment[]
+}
+
+model TestExecution {
+  id              String       @id @default(cuid())
+  runId           String
+  run             TestRun      @relation(fields: [runId], references: [id], onDelete: Cascade)
+  caseId          String
+  case            TestCase     @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  status          ExecStatus   @default(PENDING)
+  notes           String?
+  failureReason   String?
+  actualResult    String?
+  durationMinutes Int?
+  assigneeId      String?
+  assignee        User?        @relation("ExecAssignee", fields: [assigneeId], references: [id])
+  jiraIssueKey    String?
+  jiraIssueUrl    String?
+  executedById    String?
+  executedBy      User?        @relation(fields: [executedById], references: [id])
+  executedAt      DateTime?
+  createdAt       DateTime     @default(now())
+  attachments     Attachment[]
+  comments        Comment[]
+
+  @@unique([runId, caseId])
+}
+
+model Attachment {
+  id           String         @id @default(cuid())
+  filename     String
+  mimeType     String
+  size         Int
+  storageKey   String         @unique
+  caseId       String?
+  case         TestCase?      @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  executionId  String?
+  execution    TestExecution? @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  uploadedById String
+  uploadedBy   User           @relation(fields: [uploadedById], references: [id])
+  createdAt    DateTime       @default(now())
+}
+
+model Comment {
+  id          String         @id @default(cuid())
+  body        String
+  userId      String
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  caseId      String?
+  case        TestCase?      @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  executionId String?
+  execution   TestExecution? @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  runId       String?
+  run         TestRun?       @relation(fields: [runId], references: [id], onDelete: Cascade)
+  createdAt   DateTime       @default(now())
+}
+
+model ActivityLog {
+  id         String         @id @default(cuid())
+  projectId  String
+  project    Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?          @relation(fields: [userId], references: [id])
+  action     ActivityAction
+  entityType String
+  entityId   String
+  payload    Json?
+  createdAt  DateTime       @default(now())
+
+  @@index([projectId, createdAt])
+  @@index([entityType, entityId])
+}

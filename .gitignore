@@ -1,0 +1,15 @@
+node_modules/
+dist/
+build/
+.env
+.env.local
+*.log
+.DS_Store
+coverage/
+.vite/
+postgres-data/
+.claude/
+
+# Local-only seed extensions (per-developer fixtures — not shipped publicly)
+backend/prisma/seed.hapster.ts
+backend/prisma/seed.*.local.ts

@@ -1,0 +1,282 @@
+import { FormEvent, useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Link, useParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import { ArrowLeft, RefreshCw, X } from "lucide-react";
+import { api } from "../lib/api";
+import { useAuth } from "../lib/auth";
+import { logger } from "../lib/logger";
+
+type ProjectBinding = {
+  id: string;
+  name: string;
+  key: string;
+  jiraProjectKey: string | null;
+  jiraProjectName: string | null;
+  jiraIssueType: string | null;
+  jiraParentEpicKey: string | null;
+  jiraParentEpicSummary: string | null;
+};
+
+type CompanyJiraConfig = {
+  baseUrl: string;
+  email: string;
+  defaultIssueType: string;
+  enabled: boolean;
+  hasToken: boolean;
+};
+
+export function ProjectSettings() {
+  const { id } = useParams();
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const user = useAuth((s) => s.user);
+  const isManager = user?.role === "MANAGER";
+
+  const [form, setForm] = useState({
+    jiraProjectKey: "",
+    jiraProjectName: "",
+    jiraIssueType: "",
+    jiraParentEpicKey: "",
+    jiraParentEpicSummary: "",
+  });
+  const [projectQuery, setProjectQuery] = useState("");
+  const [epicQuery, setEpicQuery] = useState("");
+  const [err, setErr] = useState<string | null>(null);
+
+  const { data: binding } = useQuery<ProjectBinding | null>({
+    queryKey: ["jira-binding", id],
+    queryFn: async () => (await api.get(`/jira/projects/${id}/binding`)).data,
+    enabled: !!id,
+  });
+
+  const { data: companyConfig } = useQuery<CompanyJiraConfig | null>({
+    queryKey: ["jira-config"],
+    queryFn: async () => (await api.get(`/jira/config`)).data,
+  });
+
+  const canDiscover = !!companyConfig?.hasToken && companyConfig.enabled;
+
+  const { data: jiraProjects = [], refetch: refetchProjects, isFetching: loadingProjects } = useQuery({
+    queryKey: ["jira-projects", projectQuery],
+    queryFn: async () => (await api.get(`/jira/discover/projects`, { params: projectQuery ? { q: projectQuery } : {} })).data,
+    enabled: canDiscover,
+  });
+
+  const { data: issueTypes = [], refetch: refetchIssueTypes } = useQuery({
+    queryKey: ["jira-issue-types", form.jiraProjectKey],
+    queryFn: async () => (await api.get(`/jira/discover/issue-types`, { params: { projectKey: form.jiraProjectKey } })).data,
+    enabled: canDiscover && !!form.jiraProjectKey,
+  });
+
+  const { data: epics = [], refetch: refetchEpics, isFetching: loadingEpics } = useQuery({
+    queryKey: ["jira-epics", form.jiraProjectKey, epicQuery],
+    queryFn: async () =>
+      (await api.get(`/jira/discover/epics`, {
+        params: { projectKey: form.jiraProjectKey, ...(epicQuery ? { q: epicQuery } : {}) },
+      })).data,
+    enabled: canDiscover && !!form.jiraProjectKey,
+  });
+
+  useEffect(() => {
+    if (binding) {
+      setForm({
+        jiraProjectKey: binding.jiraProjectKey ?? "",
+        jiraProjectName: binding.jiraProjectName ?? "",
+        jiraIssueType: binding.jiraIssueType ?? "",
+        jiraParentEpicKey: binding.jiraParentEpicKey ?? "",
+        jiraParentEpicSummary: binding.jiraParentEpicSummary ?? "",
+      });
+    }
+  }, [binding?.jiraProjectKey, binding?.jiraParentEpicKey, binding?.jiraIssueType]);
+
+  const save = useMutation({
+    mutationFn: async () =>
+      (await api.put(`/jira/projects/${id}/binding`, {
+        jiraProjectKey: form.jiraProjectKey || null,
+        jiraProjectName: form.jiraProjectName || null,
+        jiraIssueType: form.jiraIssueType || null,
+        jiraParentEpicKey: form.jiraParentEpicKey || null,
+        jiraParentEpicSummary: form.jiraParentEpicSummary || null,
+      })).data,
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["jira-binding", id] });
+      setErr(null);
+      logger.info("project jira binding saved", { projectId: id, key: form.jiraProjectKey, epic: form.jiraParentEpicKey });
+    },
+    onError: (e: any) => setErr(e.response?.data?.error ?? "Save failed"),
+  });
+
+  function onSubmit(e: FormEvent) {
+    e.preventDefault();
+    save.mutate();
+  }
+
+  function pickJiraProject(p: { key: string; name: string }) {
+    setForm((f) => ({
+      ...f,
+      jiraProjectKey: p.key,
+      jiraProjectName: p.name,
+      jiraParentEpicKey: "",
+      jiraParentEpicSummary: "",
+    }));
+    setTimeout(() => refetchIssueTypes(), 0);
+  }
+
+  function pickEpic(e: { key: string; summary: string } | null) {
+    setForm((f) => ({
+      ...f,
+      jiraParentEpicKey: e?.key ?? "",
+      jiraParentEpicSummary: e?.summary ?? "",
+    }));
+  }
+
+  function clearBinding() {
+    setForm({
+      jiraProjectKey: "",
+      jiraProjectName: "",
+      jiraIssueType: "",
+      jiraParentEpicKey: "",
+      jiraParentEpicSummary: "",
+    });
+  }
+
+  return (
+    <div className="space-y-6 max-w-3xl">
+      {binding && (
+        <Link to={`/projects/${binding.id}`} className="inline-flex items-center gap-1.5 text-sm text-slate-600 hover:text-brand-600">
+          <ArrowLeft size={16} /> {binding.name}
+        </Link>
+      )}
+      <header>
+        <h1 className="text-2xl font-bold">{t("project.settings_title")}</h1>
+        <p className="text-sm text-slate-500">{t("project.settings_subtitle")}</p>
+      </header>
+
+      {!companyConfig?.hasToken && (
+        <div className="card p-5 bg-amber-50 border-amber-200 text-sm">
+          {t("jira.need_company_config")}{" "}
+          <Link to="/company" className="text-brand-600 hover:underline">{t("company.settings_title")}</Link>
+        </div>
+      )}
+
+      <form onSubmit={onSubmit} className="card p-5 space-y-5">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold">{t("jira.target_project")}</h2>
+          {form.jiraProjectKey && isManager && (
+            <button type="button" className="text-xs text-slate-500 hover:text-red-600" onClick={clearBinding}>
+              {t("jira.clear_binding")}
+            </button>
+          )}
+        </div>
+
+        <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded p-3">
+          {t("jira.project_binding_hint")}
+        </p>
+
+        {canDiscover ? (
+          <>
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold text-slate-700">{t("jira.jira_project")}</h3>
+              <button type="button" className="btn-secondary text-xs" onClick={() => refetchProjects()}>
+                <RefreshCw size={12} /> {t("jira.refresh")}
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <input
+                  className="input mb-2"
+                  placeholder={t("common.search")}
+                  value={projectQuery}
+                  onChange={(e) => setProjectQuery(e.target.value)}
+                />
+                <div className="border border-slate-200 rounded max-h-56 overflow-auto">
+                  {loadingProjects && <div className="p-2 text-xs text-slate-500">{t("common.loading")}</div>}
+                  {jiraProjects.map((p: any) => (
+                    <button
+                      type="button"
+                      key={p.key}
+                      onClick={() => pickJiraProject(p)}
+                      disabled={!isManager}
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-slate-50 border-b border-slate-100 last:border-0 ${form.jiraProjectKey === p.key ? "bg-brand-50" : ""}`}
+                    >
+                      <div className="font-medium">{p.name}</div>
+                      <div className="text-xs text-slate-500">{p.key}</div>
+                    </button>
+                  ))}
+                  {!loadingProjects && jiraProjects.length === 0 && <div className="p-2 text-xs text-slate-500">—</div>}
+                </div>
+              </div>
+              <div>
+                <label className="label">{t("jira.issue_type")}</label>
+                <select
+                  className="input"
+                  value={form.jiraIssueType}
+                  onChange={(e) => setForm({ ...form, jiraIssueType: e.target.value })}
+                  disabled={!form.jiraProjectKey || !isManager}
+                >
+                  <option value="">{t("jira.use_company_default", { type: companyConfig?.defaultIssueType ?? "Bug" })}</option>
+                  {issueTypes.map((name: string) => <option key={name} value={name}>{name}</option>)}
+                </select>
+                {form.jiraProjectKey && (
+                  <div className="text-xs text-slate-500 mt-2">
+                    {t("jira.using_project", { key: form.jiraProjectKey, name: form.jiraProjectName || "" })}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {form.jiraProjectKey && (
+              <section className="space-y-3 pt-4 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-slate-700">{t("jira.parent_epic")}</h3>
+                  <button type="button" className="btn-secondary text-xs" onClick={() => refetchEpics()}>
+                    <RefreshCw size={12} /> {t("jira.refresh")}
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500">{t("jira.parent_epic_help")}</p>
+                {form.jiraParentEpicKey && (
+                  <div className="flex items-center gap-2 text-sm bg-violet-50 border border-violet-200 rounded px-3 py-2">
+                    <span className="badge bg-violet-100 text-violet-800">{form.jiraParentEpicKey}</span>
+                    <span className="flex-1">{form.jiraParentEpicSummary}</span>
+                    <button type="button" className="text-slate-400 hover:text-red-600" onClick={() => pickEpic(null)}>
+                      <X size={14} />
+                    </button>
+                  </div>
+                )}
+                <input className="input" placeholder={t("jira.epic_search_placeholder")} value={epicQuery} onChange={(e) => setEpicQuery(e.target.value)} />
+                <div className="border border-slate-200 rounded max-h-48 overflow-auto">
+                  {loadingEpics && <div className="p-2 text-xs text-slate-500">{t("common.loading")}</div>}
+                  {epics.map((ep: any) => (
+                    <button
+                      type="button"
+                      key={ep.key}
+                      onClick={() => pickEpic(ep)}
+                      disabled={!isManager}
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-slate-50 border-b border-slate-100 last:border-0 ${form.jiraParentEpicKey === ep.key ? "bg-brand-50" : ""}`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="badge bg-violet-100 text-violet-800 text-xs">{ep.key}</span>
+                        {ep.status && <span className="badge bg-slate-100 text-slate-700 text-xs">{ep.status}</span>}
+                      </div>
+                      <div className="text-sm mt-0.5">{ep.summary}</div>
+                    </button>
+                  ))}
+                  {!loadingEpics && epics.length === 0 && <div className="p-2 text-xs text-slate-500">{t("jira.no_epics")}</div>}
+                </div>
+              </section>
+            )}
+          </>
+        ) : (
+          <div className="text-sm text-slate-500">{t("jira.cannot_discover")}</div>
+        )}
+
+        {err && <div className="text-sm text-red-600">{err}</div>}
+
+        <div className="flex gap-2 justify-end pt-4 border-t border-slate-100">
+          {isManager && <button type="submit" className="btn-primary" disabled={save.isPending}>{t("common.save")}</button>}
+        </div>
+      </form>
+    </div>
+  );
+}

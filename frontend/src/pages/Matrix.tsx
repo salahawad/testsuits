@@ -1,0 +1,126 @@
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
+import { Link, useSearchParams } from "react-router-dom";
+import { api } from "../lib/api";
+import { execStatusColors } from "../lib/status";
+import { testLevelColors } from "../lib/enums";
+import { logger } from "../lib/logger";
+
+type Dimension = "platform" | "connectivity" | "locale";
+
+export function Matrix() {
+  const { t } = useTranslation();
+  const [params, setParams] = useSearchParams();
+  const projectId = params.get("projectId") ?? "";
+  const [dimension, setDimension] = useState<Dimension>((params.get("dimension") as Dimension) ?? "platform");
+
+  const { data: projects = [] } = useQuery({
+    queryKey: ["projects"],
+    queryFn: async () => (await api.get("/projects")).data,
+  });
+
+  const { data: matrix, error } = useQuery({
+    queryKey: ["matrix", projectId, dimension],
+    queryFn: async () => (await api.get(`/matrix/projects/${projectId}`, { params: { dimension } })).data,
+    enabled: !!projectId,
+  });
+
+  useMemo(() => {
+    if (error) logger.error("matrix fetch failed", { projectId, dimension, error: String(error) });
+  }, [error, projectId, dimension]);
+
+  function selectProject(id: string) {
+    const next = new URLSearchParams(params);
+    next.set("projectId", id);
+    setParams(next);
+  }
+
+  function selectDimension(d: Dimension) {
+    setDimension(d);
+    const next = new URLSearchParams(params);
+    next.set("dimension", d);
+    setParams(next);
+  }
+
+  return (
+    <div className="space-y-6">
+      <header>
+        <h1 className="text-2xl font-bold">{t("matrix.title")}</h1>
+        <p className="text-sm text-slate-500">{t("matrix.subtitle")}</p>
+      </header>
+
+      <div className="flex gap-3 flex-wrap items-end">
+        <div>
+          <label className="label">{t("runs.project")}</label>
+          <select className="input" value={projectId} onChange={(e) => selectProject(e.target.value)}>
+            <option value="">{t("runs.select_project")}</option>
+            {projects.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className="label">{t("matrix.dimension")}</label>
+          <div className="flex gap-1">
+            {(["platform", "connectivity", "locale"] as Dimension[]).map((d) => (
+              <button
+                key={d}
+                onClick={() => selectDimension(d)}
+                className={`btn ${dimension === d ? "bg-brand-600 text-white" : "bg-white border border-slate-300 text-slate-700 hover:bg-slate-50"}`}
+              >
+                {t(`${d}.label`)}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {!projectId && <div className="card p-10 text-center text-slate-500">{t("matrix.pick_project")}</div>}
+
+      {projectId && matrix && matrix.buckets.length === 0 && (
+        <div className="card p-10 text-center text-slate-500">{t("matrix.no_data")}</div>
+      )}
+
+      {projectId && matrix && matrix.buckets.length > 0 && (
+        <div className="card overflow-auto">
+          <table className="min-w-full text-sm">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <th className="text-left px-4 py-2 font-semibold">{t("cases.title")}</th>
+                <th className="text-left px-2 py-2 font-semibold">{t("test_level.label")}</th>
+                {matrix.buckets.map((b: string) => (
+                  <th key={b} className="text-center px-3 py-2 font-semibold whitespace-nowrap">{b}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {matrix.rows.map((row: any) => (
+                <tr key={row.caseId} className="border-b border-slate-100 hover:bg-slate-50">
+                  <td className="px-4 py-2">
+                    <Link to={`/cases/${row.caseId}`} className="font-medium hover:underline">{row.title}</Link>
+                    <div className="text-xs text-slate-500">{row.suite.name}</div>
+                  </td>
+                  <td className="px-2 py-2">
+                    <span className={`badge ${testLevelColors[row.testLevel as keyof typeof testLevelColors] ?? ""}`}>
+                      {t(`test_level.${row.testLevel}`)}
+                    </span>
+                  </td>
+                  {row.cells.map((cell: any, i: number) => (
+                    <td key={i} className="px-3 py-2 text-center">
+                      {cell ? (
+                        <Link to={`/runs/${cell.runId}`} title={cell.runName}>
+                          <span className={`badge ${execStatusColors[cell.status]}`}>{cell.status}</span>
+                        </Link>
+                      ) : (
+                        <span className="text-slate-300">—</span>
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}

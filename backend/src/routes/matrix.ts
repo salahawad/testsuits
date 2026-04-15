@@ -1,0 +1,92 @@
+import { Router } from "express";
+import { prisma } from "../db";
+import { AuthedRequest } from "../middleware/auth";
+import { httpError } from "../middleware/error";
+import { caseWhere, executionWhere, projectWhere } from "../middleware/scope";
+import { logger } from "../lib/logger";
+
+export const matrixRouter = Router();
+
+type Dimension = "platform" | "connectivity" | "locale";
+const VALID_DIMENSIONS: Dimension[] = ["platform", "connectivity", "locale"];
+
+matrixRouter.get("/projects/:projectId", async (req: AuthedRequest, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const dimension = ((req.query.dimension as Dimension) ?? "platform") as Dimension;
+    if (!VALID_DIMENSIONS.includes(dimension)) {
+      throw httpError(400, `dimension must be one of ${VALID_DIMENSIONS.join(", ")}`);
+    }
+
+    const project = await prisma.project.findFirst({ where: projectWhere(req.user!, { id: projectId }) });
+    if (!project) throw httpError(404, "Project not found");
+
+    const cases = await prisma.testCase.findMany({
+      where: caseWhere(req.user!, { suite: { projectId } }),
+      select: {
+        id: true,
+        title: true,
+        testLevel: true,
+        priority: true,
+        suite: { select: { id: true, name: true } },
+      },
+      orderBy: [{ suite: { name: "asc" } }, { title: "asc" }],
+    });
+
+    const executions = await prisma.testExecution.findMany({
+      where: executionWhere(req.user!, { run: { projectId }, status: { not: "PENDING" } }),
+      select: {
+        caseId: true,
+        status: true,
+        executedAt: true,
+        run: {
+          select: { id: true, name: true, platform: true, connectivity: true, locale: true, environment: true },
+        },
+      },
+    });
+
+    const bucketValues = new Set<string>();
+    const latestByCaseAndBucket = new Map<string, { status: string; executedAt: Date | null; runId: string; runName: string }>();
+
+    for (const exec of executions) {
+      const raw = exec.run[dimension];
+      const bucket = raw ?? "—";
+      bucketValues.add(String(bucket));
+      const key = `${exec.caseId}::${bucket}`;
+      const prior = latestByCaseAndBucket.get(key);
+      if (
+        !prior ||
+        (exec.executedAt && prior.executedAt && exec.executedAt > prior.executedAt) ||
+        (!prior.executedAt && exec.executedAt)
+      ) {
+        latestByCaseAndBucket.set(key, {
+          status: exec.status,
+          executedAt: exec.executedAt,
+          runId: exec.run.id,
+          runName: exec.run.name,
+        });
+      }
+    }
+
+    const buckets = Array.from(bucketValues).sort();
+    logger.info(
+      { projectId, dimension, cases: cases.length, buckets: buckets.length, executions: executions.length },
+      "matrix report generated",
+    );
+
+    res.json({
+      dimension,
+      buckets,
+      rows: cases.map((c) => ({
+        caseId: c.id,
+        title: c.title,
+        testLevel: c.testLevel,
+        priority: c.priority,
+        suite: c.suite,
+        cells: buckets.map((b) => latestByCaseAndBucket.get(`${c.id}::${b}`) ?? null),
+      })),
+    });
+  } catch (e) {
+    next(e);
+  }
+});
