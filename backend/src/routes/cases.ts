@@ -11,7 +11,13 @@ export const casesRouter = Router();
 const stepSchema = z.object({
   action: z.string().min(1),
   expected: z.string().min(1),
+  sharedStepId: z.string().optional().nullable(),
 });
+
+const customFieldValueSchema = z.record(
+  z.string(),
+  z.union([z.string(), z.number(), z.boolean(), z.null()]),
+);
 
 const upsertSchema = z.object({
   suiteId: z.string(),
@@ -23,6 +29,7 @@ const upsertSchema = z.object({
   steps: z.array(stepSchema).optional(),
   estimatedMinutes: z.number().int().positive().optional().nullable(),
   requirements: z.array(z.string()).optional(),
+  customFieldValues: customFieldValueSchema.optional(),
 });
 
 casesRouter.post("/", requireManager, async (req: AuthedRequest, res, next) => {
@@ -36,6 +43,7 @@ casesRouter.post("/", requireManager, async (req: AuthedRequest, res, next) => {
         steps: data.steps ?? [],
         tags: data.tags ?? [],
         requirements: data.requirements ?? [],
+        customFieldValues: data.customFieldValues ?? {},
       },
       include: { suite: true },
     });
@@ -61,6 +69,7 @@ casesRouter.get("/:id", async (req: AuthedRequest, res, next) => {
         suite: { include: { project: true } },
         attachments: { include: { uploadedBy: { select: { id: true, name: true } } } },
         cloneOf: { select: { id: true, title: true } },
+        requirementLinks: { select: { id: true, externalRef: true, title: true } },
       },
     });
     if (!testCase) throw httpError(404, "Case not found");
@@ -72,9 +81,33 @@ casesRouter.get("/:id", async (req: AuthedRequest, res, next) => {
 
 casesRouter.patch("/:id", requireManager, async (req: AuthedRequest, res, next) => {
   try {
-    const owned = await prisma.testCase.findFirst({ where: caseWhere(req.user!, { id: req.params.id }), select: { id: true } });
-    if (!owned) throw httpError(404, "Case not found");
+    const current = await prisma.testCase.findFirst({ where: caseWhere(req.user!, { id: req.params.id }) });
+    if (!current) throw httpError(404, "Case not found");
     const data = upsertSchema.partial().omit({ suiteId: true }).parse(req.body);
+
+    // Snapshot current state into history before overwriting.
+    const last = await prisma.testCaseRevision.findFirst({
+      where: { caseId: current.id },
+      orderBy: { version: "desc" },
+      select: { version: true },
+    });
+    await prisma.testCaseRevision.create({
+      data: {
+        caseId: current.id,
+        version: (last?.version ?? 0) + 1,
+        title: current.title,
+        preconditions: current.preconditions,
+        priority: current.priority,
+        testLevel: current.testLevel,
+        tags: current.tags,
+        steps: current.steps as any,
+        estimatedMinutes: current.estimatedMinutes,
+        requirements: current.requirements,
+        customFieldValues: current.customFieldValues as any,
+        authorId: req.user!.id,
+      },
+    });
+
     const testCase = await prisma.testCase.update({
       where: { id: req.params.id },
       data: {
@@ -92,6 +125,27 @@ casesRouter.patch("/:id", requireManager, async (req: AuthedRequest, res, next) 
       payload: { title: testCase.title },
     });
     res.json(testCase);
+  } catch (e) {
+    next(e);
+  }
+});
+
+casesRouter.get("/:id/revisions", async (req: AuthedRequest, res, next) => {
+  try {
+    const owned = await prisma.testCase.findFirst({ where: caseWhere(req.user!, { id: req.params.id }), select: { id: true } });
+    if (!owned) throw httpError(404, "Case not found");
+    const rows = await prisma.testCaseRevision.findMany({
+      where: { caseId: owned.id },
+      orderBy: { version: "desc" },
+      take: 100,
+    });
+    // Attach author names in a single round-trip.
+    const authorIds = Array.from(new Set(rows.map((r) => r.authorId).filter(Boolean) as string[]));
+    const authors = authorIds.length
+      ? await prisma.user.findMany({ where: { id: { in: authorIds } }, select: { id: true, name: true } })
+      : [];
+    const byId = new Map(authors.map((a) => [a.id, a]));
+    res.json(rows.map((r) => ({ ...r, author: r.authorId ? byId.get(r.authorId) ?? null : null })));
   } catch (e) {
     next(e);
   }

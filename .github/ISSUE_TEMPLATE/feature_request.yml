@@ -1,0 +1,51 @@
+name: Feature request
+description: Suggest an improvement or a new capability.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the use case first. Implementation is easier than scope.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Who wants this and why the current workflow is insufficient.
+      placeholder: "As a manager I want to see which cases haven't been run in the last 30 days so I can prioritise regression."
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: A rough sketch is fine — an exhaustive design is not required.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any workarounds, simpler versions, or related features that might already cover part of this.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Primary area
+      multiple: true
+      options:
+        - Backend / API
+        - Frontend / UI
+        - Schema / data model
+        - Jira integration
+        - Auth / roles
+        - i18n
+        - DevOps / docker
+        - Docs
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Confirmations
+      options:
+        - label: I searched existing issues and didn't find a similar request.
+          required: true

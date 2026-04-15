@@ -47,6 +47,7 @@ export function ProjectDetail() {
         </div>
         <div className="flex gap-2">
           <Link to={`/projects/${project.id}/milestones`} className="btn-secondary">{t("projects.milestones")}</Link>
+          <Link to={`/projects/${project.id}/requirements`} className="btn-secondary">{t("requirements.title")}</Link>
           <Link to={`/projects/${project.id}/settings`} className="btn-secondary">{t("projects.settings")}</Link>
           <Link to={`/runs?projectId=${project.id}`} className="btn-secondary">{t("projects.test_runs")}</Link>
           <button className="btn-primary" onClick={() => setOpen(true)}><Plus size={16} /> {t("projects.new_suite")}</button>

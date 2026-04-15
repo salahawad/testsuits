@@ -1,6 +1,6 @@
 import { PrismaClient, Priority, TestLevel, Platform, Connectivity } from "@prisma/client";
 import bcrypt from "bcryptjs";
-import { randomUUID } from "crypto";
+import { randomBytes, createHash } from "crypto";
 
 const prisma = new PrismaClient();
 
@@ -725,15 +725,15 @@ async function seedProjectBasics(opts: {
 async function seedApiTokens(userId: string) {
   const existing = await prisma.apiToken.findFirst({ where: { userId, name: "CI seed token" } });
   if (existing) return;
-  const plaintext = "ts_seed_" + randomUUID().replace(/-/g, "");
+  const plaintext = "ts_" + randomBytes(24).toString("base64url");
   await prisma.apiToken.create({
     data: {
       userId,
       name: "CI seed token",
-      tokenHash: await bcrypt.hash(plaintext, 10),
+      tokenHash: createHash("sha256").update(plaintext).digest("hex"),
     },
   });
-  console.log(`Seed: ApiToken created for primary manager (demo plaintext: ${plaintext}).`);
+  console.log(`Seed: ApiToken created (demo plaintext: ${plaintext}). Use as 'Authorization: Bearer <token>'.`);
 }
 
 async function seedAttachments(companyId: string, managerId: string, testerId: string) {
@@ -793,6 +793,56 @@ async function seedAttachments(companyId: string, managerId: string, testerId: s
   }
 }
 
+async function seedRequirements(projectId: string) {
+  const existing = await prisma.requirement.count({ where: { projectId } });
+  if (existing > 0) return;
+
+  // Match external refs to the ones baked into ACME_CHECKOUT case `requirements` strings
+  // so the traceability matrix lines up with the legacy free-text requirements.
+  const specs = [
+    {
+      externalRef: "ACME-1201",
+      title: "Customer can add items to the cart",
+      description: "Any product page must let an authenticated or anonymous shopper add items to the cart and have that state persist for 24 hours.",
+      linkTo: ["Add item to cart", "Update item quantity in cart"],
+    },
+    {
+      externalRef: "ACME-1410",
+      title: "Checkout accepts major card networks",
+      description: "Checkout must tokenise Visa, Mastercard, and Amex via the gateway, and handle 3-D Secure challenges for supported issuers.",
+      linkTo: ["Pay with new credit card", "3-D Secure challenge flow", "Declined card shows a clear error"],
+    },
+    {
+      externalRef: "ACME-1520",
+      title: "Shipping address management",
+      description: "Customers can use a saved shipping address or create a new one inline during checkout.",
+      linkTo: ["Select a saved shipping address", "Add a new address during checkout"],
+    },
+  ];
+
+  for (const spec of specs) {
+    const caseRows = await prisma.testCase.findMany({
+      where: { suite: { projectId }, title: { in: spec.linkTo } },
+      select: { id: true },
+    });
+    const req = await prisma.requirement.create({
+      data: {
+        projectId,
+        externalRef: spec.externalRef,
+        title: spec.title,
+        description: spec.description,
+      },
+    });
+    if (caseRows.length > 0) {
+      await prisma.requirement.update({
+        where: { id: req.id },
+        data: { cases: { connect: caseRows.map((c) => ({ id: c.id })) } },
+      });
+    }
+  }
+  console.log(`Seed: created ${specs.length} requirements for Acme Checkout with linked cases.`);
+}
+
 async function seedJiraConfigFromEnv(companyId: string, primaryProjectKey?: string) {
   const baseUrl = process.env.JIRA_BASE_URL;
   const email = process.env.JIRA_USER;
@@ -836,6 +886,7 @@ async function main() {
     await seedMilestones(checkout.id);
     await seedRunsForCheckout(checkout.id, acmeManager.id, acmeTester.id);
     await seedAttachments(acme.id, acmeManager.id, acmeTester.id);
+    await seedRequirements(checkout.id);
   }
   if (portal) {
     await seedProjectBasics({

@@ -1,5 +1,5 @@
 import { FormEvent, useState } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../lib/auth";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
@@ -10,8 +10,8 @@ export function Login() {
   const { user, login, signup } = useAuth();
   const navigate = useNavigate();
   const [mode, setMode] = useState<"login" | "signup">("login");
-  const [email, setEmail] = useState("salah.a@hapster.io");
-  const [password, setPassword] = useState("hapster123");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -73,13 +73,19 @@ export function Login() {
             {loading ? t("common.please_wait") : mode === "login" ? t("auth.sign_in") : t("auth.create_company")}
           </button>
         </form>
-        <div className="mt-4 text-center text-sm">
+        <div className="mt-4 flex flex-col items-center gap-2 text-sm">
           <button
+            type="button"
             className="text-brand-600 hover:underline"
             onClick={() => setMode(mode === "login" ? "signup" : "login")}
           >
             {mode === "login" ? t("auth.no_company") : t("auth.have_account")}
           </button>
+          {mode === "login" && (
+            <Link to="/forgot-password" className="text-slate-500 hover:text-brand-600 hover:underline">
+              {t("auth_reset.forgot_link")}
+            </Link>
+          )}
         </div>
       </div>
     </div>

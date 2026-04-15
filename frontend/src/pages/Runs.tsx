@@ -1,16 +1,22 @@
 import { FormEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
-import { Plus } from "lucide-react";
+import { Plus, List, LayoutGrid } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { runStatusColors } from "../lib/status";
 import { CONNECTIVITY, PLATFORMS, TEST_LEVELS } from "../lib/enums";
 import { logger } from "../lib/logger";
+import { useAuth } from "../lib/auth";
+
+const KANBAN_COLUMNS = ["DRAFT", "IN_PROGRESS", "COMPLETED", "ARCHIVED"] as const;
 
 export function Runs() {
   const { t } = useTranslation();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
+  const user = useAuth((s) => s.user);
+  const isManager = user?.role === "MANAGER";
+  const view = params.get("view") === "kanban" ? "kanban" : "list";
   const projectIdFilter = params.get("projectId") ?? "";
   const milestoneIdFilter = params.get("milestoneId") ?? "";
   const qc = useQueryClient();
@@ -103,6 +109,35 @@ export function Runs() {
     setSelectedSuiteIds((prev) => (prev.includes(sid) ? prev.filter((x) => x !== sid) : [...prev, sid]));
   }
 
+  const setView = (next: "list" | "kanban") => {
+    const p = new URLSearchParams(params);
+    if (next === "list") p.delete("view");
+    else p.set("view", next);
+    setParams(p, { replace: true });
+  };
+
+  const updateStatus = useMutation({
+    mutationFn: async ({ runId, status }: { runId: string; status: string }) =>
+      (await api.patch(`/runs/${runId}`, { status })).data,
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["runs"] });
+      logger.info("run status changed via kanban", { runId: vars.runId, status: vars.status });
+    },
+    onError: (e: any) => logger.error("kanban status change failed", { status: e?.response?.status }),
+  });
+
+  function onDragStart(e: React.DragEvent<HTMLAnchorElement>, runId: string) {
+    e.dataTransfer.setData("text/run-id", runId);
+    e.dataTransfer.effectAllowed = "move";
+  }
+  function onColumnDrop(e: React.DragEvent<HTMLDivElement>, status: string) {
+    e.preventDefault();
+    const runId = e.dataTransfer.getData("text/run-id");
+    if (!runId) return;
+    const run = runs.find((r: any) => r.id === runId);
+    if (run && run.status !== status) updateStatus.mutate({ runId, status });
+  }
+
   return (
     <div className="space-y-6">
       <header className="flex items-center justify-between">
@@ -110,7 +145,27 @@ export function Runs() {
           <h1 className="text-2xl font-bold">{t("runs.title")}</h1>
           <p className="text-sm text-slate-500">{t("runs.subtitle")}</p>
         </div>
-        <button className="btn-primary" onClick={() => setOpen(true)}><Plus size={16} /> {t("runs.new_run")}</button>
+        <div className="flex items-center gap-2">
+          <div className="inline-flex rounded border border-slate-200 bg-white" role="tablist" aria-label={t("runs.view_toggle")}>
+            <button
+              type="button"
+              className={`px-2.5 py-1.5 text-xs inline-flex items-center gap-1 ${view === "list" ? "bg-slate-100 text-slate-800" : "text-slate-500 hover:text-slate-700"}`}
+              onClick={() => setView("list")}
+              aria-pressed={view === "list"}
+            >
+              <List size={14} /> {t("runs.view_list")}
+            </button>
+            <button
+              type="button"
+              className={`px-2.5 py-1.5 text-xs inline-flex items-center gap-1 ${view === "kanban" ? "bg-slate-100 text-slate-800" : "text-slate-500 hover:text-slate-700"}`}
+              onClick={() => setView("kanban")}
+              aria-pressed={view === "kanban"}
+            >
+              <LayoutGrid size={14} /> {t("runs.view_kanban")}
+            </button>
+          </div>
+          <button className="btn-primary" onClick={() => setOpen(true)}><Plus size={16} /> {t("runs.new_run")}</button>
+        </div>
       </header>
 
       {open && (
@@ -213,7 +268,7 @@ export function Runs() {
 
       {runs.length === 0 ? (
         <div className="card p-10 text-center text-slate-500">{t("runs.empty")}</div>
-      ) : (
+      ) : view === "list" ? (
         <div className="card divide-y divide-slate-100">
           {runs.map((r: any) => (
             <Link key={r.id} to={`/runs/${r.id}`} className="flex items-center justify-between px-5 py-3 hover:bg-slate-50">
@@ -234,6 +289,51 @@ export function Runs() {
               <span className={`badge ${runStatusColors[r.status]}`}>{r.status.replace("_", " ")}</span>
             </Link>
           ))}
+        </div>
+      ) : (
+        <div>
+          {isManager && (
+            <p className="text-xs text-slate-500 mb-2">{t("runs.kanban_hint")}</p>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            {KANBAN_COLUMNS.map((status) => {
+              const items = runs.filter((r: any) => r.status === status);
+              return (
+                <div
+                  key={status}
+                  className="bg-slate-50 rounded-md border border-slate-200 p-2 min-h-[120px]"
+                  onDragOver={(e) => { if (isManager) e.preventDefault(); }}
+                  onDrop={(e) => { if (isManager) onColumnDrop(e, status); }}
+                >
+                  <div className="flex items-center justify-between px-1 mb-2">
+                    <span className={`badge ${runStatusColors[status]}`}>{status.replace("_", " ")}</span>
+                    <span className="text-xs text-slate-500">{items.length}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {items.map((r: any) => (
+                      <Link
+                        key={r.id}
+                        to={`/runs/${r.id}`}
+                        draggable={isManager}
+                        onDragStart={(e) => onDragStart(e, r.id)}
+                        className="block bg-white rounded border border-slate-200 p-2 hover:border-brand-400 text-sm"
+                      >
+                        <div className="font-medium truncate">{r.name}</div>
+                        <div className="text-xs text-slate-500 mt-1 flex items-center gap-1 flex-wrap">
+                          <span>{r.project.name}</span>
+                          {r.milestone && <span className="badge bg-violet-100 text-violet-700 text-[10px]">{r.milestone.name}</span>}
+                          <span>· {r._count.executions} cases</span>
+                        </div>
+                      </Link>
+                    ))}
+                    {items.length === 0 && (
+                      <div className="text-xs text-slate-400 italic px-1 py-2">{t("runs.kanban_empty_col")}</div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>

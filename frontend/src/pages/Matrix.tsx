@@ -7,7 +7,8 @@ import { execStatusColors } from "../lib/status";
 import { testLevelColors } from "../lib/enums";
 import { logger } from "../lib/logger";
 
-type Dimension = "platform" | "connectivity" | "locale";
+type Dimension = "platform" | "connectivity" | "locale" | "requirement";
+const DIMENSIONS: Dimension[] = ["platform", "connectivity", "locale", "requirement"];
 
 export function Matrix() {
   const { t } = useTranslation();
@@ -61,7 +62,7 @@ export function Matrix() {
         <div>
           <label className="label">{t("matrix.dimension")}</label>
           <div className="flex gap-1">
-            {(["platform", "connectivity", "locale"] as Dimension[]).map((d) => (
+            {DIMENSIONS.map((d) => (
               <button
                 key={d}
                 onClick={() => selectDimension(d)}
@@ -107,9 +108,13 @@ export function Matrix() {
                   {row.cells.map((cell: any, i: number) => (
                     <td key={i} className="px-3 py-2 text-center">
                       {cell ? (
-                        <Link to={`/runs/${cell.runId}`} title={cell.runName}>
-                          <span className={`badge ${execStatusColors[cell.status]}`}>{cell.status}</span>
-                        </Link>
+                        cell.runId ? (
+                          <Link to={`/runs/${cell.runId}`} title={cell.runName}>
+                            <span className={`badge ${execStatusColors[cell.status as keyof typeof execStatusColors] ?? "bg-slate-100 text-slate-500"}`}>{cell.status}</span>
+                          </Link>
+                        ) : (
+                          <span className="badge bg-slate-100 text-slate-500" title="Linked to requirement but never executed">{cell.status}</span>
+                        )
                       ) : (
                         <span className="text-slate-300">—</span>
                       )}

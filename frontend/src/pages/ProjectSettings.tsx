@@ -6,6 +6,9 @@ import { ArrowLeft, RefreshCw, X } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { logger } from "../lib/logger";
+import { CustomFieldsEditor } from "../components/CustomFieldsEditor";
+import { WebhooksEditor } from "../components/WebhooksEditor";
+import { SharedStepsEditor } from "../components/SharedStepsEditor";
 
 type ProjectBinding = {
   id: string;
@@ -33,6 +36,7 @@ export function ProjectSettings() {
   const user = useAuth((s) => s.user);
   const isManager = user?.role === "MANAGER";
 
+  const [tab, setTab] = useState<"jira" | "custom_fields" | "shared_steps" | "webhooks">("jira");
   const [form, setForm] = useState({
     jiraProjectKey: "",
     jiraProjectName: "",
@@ -153,13 +157,30 @@ export function ProjectSettings() {
         <p className="text-sm text-slate-500">{t("project.settings_subtitle")}</p>
       </header>
 
-      {!companyConfig?.hasToken && (
+      <nav className="flex gap-1 border-b border-slate-200 text-sm">
+        {(["jira", "custom_fields", "shared_steps", "webhooks"] as const).map((key) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            className={`px-3 py-2 border-b-2 -mb-px ${tab === key ? "border-brand-500 text-brand-700" : "border-transparent text-slate-500 hover:text-slate-700"}`}
+          >
+            {t(`project.tab_${key}`)}
+          </button>
+        ))}
+      </nav>
+
+      {tab === "custom_fields" && id && <CustomFieldsEditor projectId={id} canEdit={isManager} />}
+      {tab === "shared_steps" && id && <SharedStepsEditor projectId={id} canEdit={isManager} />}
+      {tab === "webhooks" && id && <WebhooksEditor projectId={id} canEdit={isManager} />}
+
+      {tab === "jira" && !companyConfig?.hasToken && (
         <div className="card p-5 bg-amber-50 border-amber-200 text-sm">
           {t("jira.need_company_config")}{" "}
           <Link to="/company" className="text-brand-600 hover:underline">{t("company.settings_title")}</Link>
         </div>
       )}
 
+      {tab === "jira" && (
       <form onSubmit={onSubmit} className="card p-5 space-y-5">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold">{t("jira.target_project")}</h2>
@@ -277,6 +298,7 @@ export function ProjectSettings() {
           {isManager && <button type="submit" className="btn-primary" disabled={save.isPending}>{t("common.save")}</button>}
         </div>
       </form>
+      )}
     </div>
   );
 }

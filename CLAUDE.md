@@ -60,13 +60,48 @@ Supported languages: **English (`en`)** and **French (`fr`)**. Both must stay in
 - [ ] The key structures in both JSON files are identical (same paths, same types).
 - [ ] Pluralization and variable substitution use i18next features, not string concatenation.
 
-## 3. Other standing rules (short)
+## 3. Keep README.md in sync with the code
+
+The README is the contract for anyone cloning this repo — **if the code changes in a way a reader would notice, the README changes in the same commit**. Treat this the same way as logging and i18n: non-negotiable, not an afterthought.
+
+### What triggers a README update
+
+Update [README.md](README.md) when you:
+
+- **Add / remove / rename an HTTP route** → update the *API surface* table and the role-gate markers (`(mgr)`, etc.).
+- **Add / remove / rename a Prisma model or field, or change an enum** → update the *Domain model* block and the *Enums* line.
+- **Change role permissions** → update the *Role capabilities* table.
+- **Add / remove a top-level frontend page, sidebar entry, or component** → update the *Folder layout* block.
+- **Add / remove a service in `docker-compose.yml`** (e.g. Mailpit, a worker) → update the *Quick start* URL table and the *Configuration* section.
+- **Add / rename / remove an environment variable** → update the matching `.env.example` line **and** the variable tables in README.
+- **Add / change a user-visible flow** (Jira split, password reset, invites, API tokens, webhooks, custom fields, shared steps, requirements, Kanban view, matrix dimensions, …) → add or update the relevant how-to section, and mention it in the top bullet list if it's a first-class feature.
+- **Change a seeded account, demo tenant, or default port** → update the *Seeded accounts* / *Host port overrides* tables.
+
+### What does NOT require a README update
+
+- Refactors that don't change the public surface.
+- Bug fixes with no behavioural change the caller can detect.
+- Internal library swaps where the external contract holds.
+- Tests, logs, comments.
+
+If you're unsure, err toward updating. One extra line in the README is cheaper than a reader hitting a stale curl example.
+
+### Checklist before marking a task done
+
+- [ ] New / renamed routes are in the *API surface* table with correct role tags.
+- [ ] New / renamed env vars are in both `.env.example` and the README's config tables.
+- [ ] New pages/models/enums are reflected in *Folder layout*, *Domain model*, and the *Enums* line.
+- [ ] Role changes are reflected in the *Role capabilities* table.
+- [ ] New user-visible flows have at least a short how-to section.
+- [ ] Top-bullet feature list still reads as a faithful summary of what the product does today.
+
+## 4. Other standing rules (short)
 
 - **TypeScript strict** is on; don't silence errors with `any` or `@ts-ignore` — fix the type.
 - **Prisma migrations**: schema changes go through `prisma db push` in dev and proper migrations in prod.
 - **Don't leak secrets**: never log or commit API tokens, Jira credentials, DB URLs with passwords, or JWT secrets.
 - **Read before writing**: when editing an unfamiliar area, read neighbouring code (routes, components) to match conventions.
 
-## 4. When in doubt
+## 5. When in doubt
 
 If a task doesn't obviously have user-visible text or loggable events, still ask: *does this path produce an error I'd want to see in production?* and *does this render anything a user might read?* The answer is usually yes for at least one — and that means a log or a translation key is owed.

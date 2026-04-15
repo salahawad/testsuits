@@ -72,7 +72,10 @@
     "top_failing_cases": "Top Failing Cases (30d)",
     "no_failing_cases": "No failures in the last 30 days.",
     "failures_count": "{{count}} failures",
-    "due": "due {{date}}"
+    "due": "due {{date}}",
+    "trend_30d": "Trend (last 30 days)",
+    "release_readiness": "Release Readiness",
+    "defect_aging": "Defect Aging"
   },
   "projects": {
     "title": "Projects",
@@ -117,7 +120,13 @@
     "no_attachments": "No attachments yet.",
     "upload": "Upload",
     "discussion": "Discussion",
-    "delete_confirm": "Delete this case?"
+    "delete_confirm": "Delete this case?",
+    "shared_library": "Shared library",
+    "markdown_hint": "Markdown supported: **bold**, *italic*, `code`, lists, [links](url).",
+    "custom_fields": "Custom fields",
+    "linked_shared_step": "Linked to a shared step",
+    "shared": "Shared",
+    "no_shared_steps": "No shared steps in this project yet."
   },
   "runs": {
     "title": "Test Runs",
@@ -148,7 +157,12 @@
     "comments": "Comments",
     "evidence": "Evidence",
     "no_evidence": "No attachments.",
-    "csv": "CSV"
+    "csv": "CSV",
+    "view_toggle": "View",
+    "view_list": "List",
+    "view_kanban": "Kanban",
+    "kanban_hint": "Drag a card across columns to change a run's status.",
+    "kanban_empty_col": "Nothing here."
   },
   "milestones": {
     "title": "Milestones",
@@ -206,7 +220,55 @@
   },
   "project": {
     "settings_title": "Project settings",
-    "settings_subtitle": "Pick which Jira project and optional parent epic new bugs will be filed into."
+    "settings_subtitle": "Pick which Jira project and optional parent epic new bugs will be filed into.",
+    "tab_jira": "Jira",
+    "tab_custom_fields": "Custom fields",
+    "tab_shared_steps": "Shared steps",
+    "tab_webhooks": "Webhooks"
+  },
+  "custom_fields": {
+    "title": "Custom fields",
+    "subtitle": "Extra fields attached to every test case in this project.",
+    "add": "Add field",
+    "empty": "No custom fields yet. Add one to collect extra data on every case.",
+    "label": "Label",
+    "type": "Type",
+    "required": "Required",
+    "options": "Options",
+    "options_placeholder": "Comma-separated values",
+    "type_text": "Text",
+    "type_textarea": "Long text",
+    "type_number": "Number",
+    "type_select": "Select",
+    "type_checkbox": "Checkbox"
+  },
+  "shared_steps": {
+    "title": "Shared steps",
+    "subtitle": "A library of reusable steps you can drop into any test case.",
+    "add": "New shared step",
+    "name": "Name",
+    "empty": "No shared steps yet. Create one to reuse the same action across multiple cases.",
+    "delete_confirm": "Delete this shared step?"
+  },
+  "webhooks": {
+    "title": "Webhooks",
+    "subtitle": "POST events to an external URL when things happen in this project.",
+    "add": "New webhook",
+    "url": "Target URL",
+    "secret_optional": "Signing secret (optional)",
+    "secret_placeholder": "Leave blank for unsigned deliveries",
+    "secret_help": "If set, TestSuits signs the request body with HMAC-SHA256 and sends it as the x-testsuits-signature header.",
+    "events": "Events",
+    "empty": "No webhooks configured.",
+    "active": "Active",
+    "inactive": "Paused",
+    "enable": "Enable",
+    "disable": "Pause",
+    "signed": "Signed",
+    "test": "Send test delivery",
+    "delete_confirm": "Delete this webhook?",
+    "recent_deliveries": "Recent deliveries",
+    "pick_event": "Pick at least one event."
   },
   "comments": {
     "placeholder": "Write a comment…",
@@ -217,14 +279,108 @@
     "title": "Team",
     "subtitle": "Members of {{company}}. Managers see all work, testers see only their own.",
     "add_member": "Add member",
+    "invite_member": "Invite teammate",
+    "invite_subtitle": "Send an email invite. The teammate sets their own password from the link.",
+    "invite_sent": "Invite created. Send them this link:",
     "role": "Role",
     "manager": "Manager",
     "tester": "Tester",
     "delete_confirm": "Remove this teammate?"
   },
+  "tokens": {
+    "title": "API tokens",
+    "subtitle": "Personal access tokens for scripting and CI. Each token inherits your role and company.",
+    "new": "New token",
+    "name_label": "Name",
+    "name_placeholder": "e.g. GitHub Actions",
+    "name_help": "Give this token a description so you can identify it later.",
+    "reveal_title": "Copy your token now — it won't be shown again",
+    "reveal_help": "Store it in a secrets manager or CI variable. Revoke anytime if it leaks.",
+    "copy": "Copy",
+    "copied": "Copied",
+    "ive_saved_it": "I've saved it",
+    "empty": "No tokens yet. Create one to call the API from scripts or CI.",
+    "created_on": "Created {{date}}",
+    "last_used": "last used {{date}}",
+    "never_used": "never used",
+    "revoke_confirm": "Revoke this token? Anything using it will stop working immediately."
+  },
+  "auth_reset": {
+    "forgot_title": "Reset your password",
+    "forgot_help": "Enter your email. If it's in our system, we'll email you a reset link.",
+    "forgot_submit": "Send reset link",
+    "forgot_sent": "If that email exists, a reset link has been sent. Check your inbox.",
+    "forgot_dev_link": "Dev mode — reset link:",
+    "reset_title": "Choose a new password",
+    "reset_help": "Tokens expire after 1 hour. Pick a password you haven't used elsewhere.",
+    "reset_submit": "Save new password",
+    "reset_success": "Password updated. You can now sign in.",
+    "reset_invalid": "This reset link is invalid or has expired. Request a new one.",
+    "invite_title": "Accept your invite",
+    "invite_help": "Set a password to finish creating your account.",
+    "invite_submit": "Create my account",
+    "invite_success": "Welcome aboard. You can now sign in.",
+    "invite_invalid": "This invite link is invalid or has expired. Ask your manager to resend it.",
+    "back_to_login": "Back to sign in",
+    "forgot_link": "Forgot your password?"
+  },
+  "requirements": {
+    "title": "Requirements",
+    "subtitle": "First-class requirements for this project — link them to cases to build a traceability matrix.",
+    "new": "New requirement",
+    "external_ref": "External reference",
+    "external_ref_help": "URL or ID in your requirements system (Jira story, Confluence page, etc).",
+    "req_title": "Title",
+    "description": "Description",
+    "linked_cases": "Linked cases",
+    "empty": "No requirements yet for this project.",
+    "pick_for_case": "Link a requirement",
+    "search_placeholder": "Search by title or reference…",
+    "legacy_note": "Legacy free-text requirements on this case are shown above. Pick a first-class requirement below to link it."
+  },
   "company": {
     "settings_title": "Company settings",
     "settings_subtitle": "Jira integration and templates apply to every project in this company."
+  },
+  "sso": {
+    "title": "SSO & Provisioning",
+    "subtitle": "Configure SAML single sign-on and SCIM user provisioning for this company.",
+    "admin_only": "Admin role required to view SSO settings.",
+    "saml_config": "SAML configuration",
+    "enabled": "Enabled",
+    "config_hint": "Copy the IdP metadata from your identity provider (Okta, Azure AD, JumpCloud). The x509 certificate is used to verify SAML responses.",
+    "entity_id": "Entity ID (SP)",
+    "sso_url": "IdP SSO URL",
+    "x509_cert": "IdP x509 certificate (PEM)",
+    "cert_stored": "(stored — leave blank to keep current)",
+    "email_attribute": "Email attribute",
+    "name_attribute": "Name attribute",
+    "default_role": "Default role for new users",
+    "scim_tokens": "SCIM provisioning tokens",
+    "scim_hint": "Give your IdP a Bearer token to call /api/scim/v2. Tokens are shown once at creation — store them securely.",
+    "scim_token_name_placeholder": "e.g. Okta production",
+    "issue_token": "Issue token",
+    "token_shown_once": "Copy this token now — it won't be shown again.",
+    "no_scim_tokens": "No SCIM tokens issued yet.",
+    "created": "Created",
+    "last_used": "Last used",
+    "revoke_confirm": "Revoke this SCIM token?"
+  },
+  "audit": {
+    "title": "Audit log",
+    "subtitle": "Tenant-wide activity stream for compliance review.",
+    "download_csv": "Download CSV",
+    "action_filter": "Action",
+    "user_filter": "User",
+    "from": "From",
+    "to": "To",
+    "empty": "No audit entries match those filters.",
+    "when": "When",
+    "user": "User",
+    "action": "Action",
+    "project": "Project",
+    "entity": "Entity",
+    "rows_count": "{{count}} rows"
   },
   "test_level": {
     "label": "Test level",
@@ -254,6 +410,9 @@
     "label": "Locale",
     "placeholder": "e.g. en, fr, ar"
   },
+  "requirement": {
+    "label": "Requirement"
+  },
   "matrix": {
     "title": "Coverage matrix",
     "subtitle": "Latest result per case across a configuration dimension.",
@@ -272,6 +431,10 @@
     "execution_assigned": "assigned execution",
     "comment_added": "commented",
     "jira_linked": "linked Jira issue",
-    "attachment_added": "added attachment"
+    "attachment_added": "added attachment",
+    "shared_step_created": "created a shared step",
+    "shared_step_updated": "updated a shared step",
+    "webhook_configured": "configured a webhook",
+    "custom_fields_updated": "updated custom fields"
   }
 }

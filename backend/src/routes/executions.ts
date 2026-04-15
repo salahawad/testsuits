@@ -1,11 +1,12 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db";
-import { AuthedRequest } from "../middleware/auth";
+import { AuthedRequest, requireWrite } from "../middleware/auth";
 import { httpError } from "../middleware/error";
 import { executionWhere } from "../middleware/scope";
 import { logActivity } from "../lib/activity";
 import { logger } from "../lib/logger";
+import { dispatchWebhook } from "../lib/webhooks";
 
 export const executionsRouter = Router();
 
@@ -20,7 +21,7 @@ const updateSchema = z.object({
   jiraIssueUrl: z.string().url().optional().nullable(),
 });
 
-executionsRouter.patch("/:id", async (req: AuthedRequest, res, next) => {
+executionsRouter.patch("/:id", requireWrite, async (req: AuthedRequest, res, next) => {
   try {
     const data = updateSchema.parse(req.body);
     const before = await prisma.testExecution.findFirst({
@@ -63,6 +64,21 @@ executionsRouter.patch("/:id", async (req: AuthedRequest, res, next) => {
         entityId: execution.id,
         payload: { from: before.status, to: data.status, case: execution.case.title },
       });
+      if (data.status === "FAILED" || data.status === "PASSED") {
+        dispatchWebhook({
+          projectId: before.run.projectId,
+          event: data.status === "FAILED" ? "execution.failed" : "execution.passed",
+          payload: {
+            executionId: execution.id,
+            runId: before.runId,
+            caseId: execution.caseId,
+            caseTitle: execution.case.title,
+            status: data.status,
+            failureReason: execution.failureReason,
+            executedBy: req.user!.id,
+          },
+        });
+      }
     }
     if (data.assigneeId !== undefined && data.assigneeId !== before.assigneeId) {
       await logActivity({
@@ -100,7 +116,7 @@ executionsRouter.get("/:id", async (req: AuthedRequest, res, next) => {
   }
 });
 
-executionsRouter.post("/bulk-assign", async (req: AuthedRequest, res, next) => {
+executionsRouter.post("/bulk-assign", requireWrite, async (req: AuthedRequest, res, next) => {
   try {
     const { executionIds, assigneeId } = z.object({
       executionIds: z.array(z.string()).min(1),

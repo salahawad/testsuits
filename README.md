@@ -4,10 +4,23 @@ A self-hosted test management platform for manual functional QA. Organise projec
 
 - **Multi-tenant** — every object is scoped to a Company; cross-tenant access is blocked at the API layer.
 - **Jira integration** — Jira credentials are configured once per company; each project picks which Jira project to file bugs into. `Create Jira bug` on a failed execution only enables when the execution's project has a Jira binding and the company has Jira credentials saved.
+- **Custom fields** — per-project configurable fields (text, long text, number, select, checkbox) that attach to every test case in the project.
+- **Shared / reusable steps** — a per-project library of named steps; insert one into any case from the step editor.
+- **Rich-text steps** — action/expected accept Markdown (bold, italic, inline code, bullet/numbered lists, links) and render natively in view mode.
+- **Webhooks** — configure outbound HTTP webhooks per project on events (`run.created`, `run.completed`, `execution.failed`, `execution.passed`, `jira.bug_created`). Optional HMAC-SHA256 signing, delivery log, test-fire button.
+- **Kanban run view** — toggle between list and kanban on the Runs page; managers drag cards between columns to change a run's status.
 - **Evidence storage** — upload screenshots, videos and logs against cases or executions.
 - **Full activity log** — per-project event stream with filters.
-- **CSV export** of run results, API tokens for CI integration.
-- **Roles** — `MANAGER` sees everything in the company; `TESTER` sees only runs/executions they own, created, or are assigned to. Both roles can execute tests and assign executions to any teammate.
+- **CSV export** of run results.
+- **API tokens** — personal access tokens (`ts_…` prefix, SHA-256 hashed at rest). Send as `Authorization: Bearer <token>` to call the API from CI. Token auth is read-only on the token management endpoints — tokens can't mint more tokens.
+- **Invite flow & password reset** — managers invite teammates via one-time signed links; users reset their own password from the sign-in page. Links go through SMTP (Mailpit in dev, any SMTP provider in prod), and the UI also surfaces a copyable dev link for local testing.
+- **Requirements & traceability** — first-class `Requirement` objects per project, with many-to-many links to test cases. The Coverage Matrix has a **Requirement** dimension that pivots the latest execution status per case under each linked requirement; unlinked cells are blank and linked-but-never-executed cells show `UNTESTED`.
+- **Roles** — `ADMIN` (company settings, SSO/SCIM tokens, audit log), `MANAGER` (all project work), `TESTER` (runs/executions they own, created, or are assigned to; can execute and assign), `VIEWER` (read-only across the company).
+- **SCIM 2.0 user provisioning** — working. Issue a per-tenant SCIM token from Company Settings → SSO, point your IdP (Okta, Azure AD, JumpCloud) at `/api/scim/v2`. Groups and role-to-group mapping are not yet supported.
+- **SAML SSO — scaffolding only, not production-ready.** The per-company config UI and routes are in place, but `/saml/:slug/login` returns `501` and `/saml/:slug/acs` deliberately rejects requests until a real assertion parser is wired up (see comments in `backend/src/routes/saml.ts` for the exact steps — install `@node-saml/node-saml` and verify against `cfg.x509Cert`). Do not expose these routes to the public internet as-is.
+- **Audit log** — `/api/audit` surfaces the tenant-wide activity stream with user/action/date filters and CSV export for compliance reviews.
+- **Test case versioning** — every `PATCH /cases/:id` snapshots the prior state to `TestCaseRevision` and `GET /cases/:id/revisions` returns the full audit trail. The case detail page exposes a History panel that lists revisions with author/date/changed-field summary; a per-version field-level diff view is on the roadmap.
+- **Executive dashboard** — stat tiles, 30-day execution & pass-rate trend, release-readiness per milestone, defect aging buckets, top failing cases.
 - **i18n** — English and French built in with a language switcher; sidebar collapses for more canvas.
 
 ## Stack
@@ -42,6 +55,7 @@ On first boot the API container runs `prisma db push` to create the schema and `
 | Web UI         | http://localhost:5173                       |
 | API            | http://localhost:4000/api                   |
 | MinIO console  | http://localhost:9005 (minioadmin/minioadmin) |
+| Mailpit (mail) | http://localhost:8025                       |
 | Postgres       | localhost:5434 (user/pass: `testsuits`)     |
 
 ### Seeded accounts
@@ -111,6 +125,20 @@ JIRA_PROJECT_KEY=PROJ
 
 API tokens: [id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens).
 
+### Email
+
+Outgoing email (password reset, team invites) is sent via SMTP. In dev the compose stack ships a [Mailpit](https://github.com/axllent/mailpit) container that catches every message — no real mailbox required.
+
+| Variable            | Default                                      | Purpose                                                      |
+| ------------------- | -------------------------------------------- | ------------------------------------------------------------ |
+| `SMTP_URL`          | `smtp://mailpit:1025`                        | SMTP connection string. Unset = log the body, don't send     |
+| `MAIL_FROM`         | `TestSuits <no-reply@testsuits.local>`       | From header on every message                                 |
+| `APP_URL`           | `http://localhost:5173`                      | Base URL used to build links (reset, invite) in email bodies |
+| `MAILPIT_SMTP_PORT` | `1025`                                       | Host-side SMTP port for Mailpit                              |
+| `MAILPIT_UI_PORT`   | `8025`                                       | Host-side web UI for Mailpit                                 |
+
+Open [http://localhost:8025](http://localhost:8025) to read every email the app sends. For production, set `SMTP_URL` to your provider's URL (e.g. `smtps://postmaster@mg.example.com:KEY@smtp.mailgun.org:465`) — no code changes needed.
+
 ## Working with the app
 
 ### Accessing from another device on your LAN
@@ -172,6 +200,44 @@ Jira is split across two screens: credentials + templates live at the **company*
 
 On a failed execution, click **Create Jira bug**. The defect is filed with the full test context (steps, failure reason, tester, environment, run name) and linked back to the execution. The button is only enabled when the company has Jira credentials saved **and** the execution's project has a Jira binding.
 
+## Inviting teammates & resetting passwords
+
+Outbound mail goes through SMTP. In development, the `mailpit` container in `docker-compose.yml` provides a local SMTP sink + web UI — open http://localhost:8025 to read mail sent by the app. In production, point `SMTP_URL` at your real provider (Mailgun, SES, Postmark, etc).
+
+### Invite a teammate
+
+1. Log in as a manager.
+2. Open **Team → Invite teammate**.
+3. Fill in name, email, and role, and click **Invite**.
+4. The server issues a one-time link valid for 7 days and emails it to the invitee. In dev, the UI also shows the link for easy copy-paste.
+5. The invitee opens the link, sets their password, and is signed in directly — no second step, no shared passwords.
+
+### Forgot your password?
+
+The sign-in page has a **Forgot your password?** link. Enter your email; if it matches an account, the server issues a one-time link valid for 1 hour and emails it. The response is identical for known and unknown emails (no user enumeration).
+
+## API tokens (for CI / scripting)
+
+Open **API tokens** from the sidebar. Create a token, give it a name, and copy the plaintext — the server stores only a SHA-256 hash and the plaintext is shown exactly once. Use it as:
+
+```bash
+curl -H "Authorization: Bearer ts_<your-token>" https://testsuits.example.com/api/runs
+```
+
+Tokens inherit the creator's role and company. Token-authenticated callers can hit every endpoint **except** the token management endpoints (`GET/POST/DELETE /api/tokens`) — those require a JWT session so a compromised token can't mint fresh credentials.
+
+Revoke a token anytime from the same page. Revocation is immediate.
+
+A `CI seed token` is created automatically by the seed for the primary manager; the plaintext is printed to the seed log so you can demo the flow end-to-end.
+
+## Requirements & traceability
+
+Requirements are first-class per-project objects. Open a project → **Requirements** to create them; each one has an external reference (a URL or ID in your requirements system — Jira story, Confluence page, etc) and a title.
+
+Link requirements to cases from **Case → Edit → Linked requirements** (multi-select). The legacy free-text `requirements[]` on a case still works and is shown in a separate panel; use the first-class links for anything that should surface in traceability reporting.
+
+The Coverage Matrix picks up a new dimension: select **Requirement** on the Matrix page and the columns become the project's requirements. Each cell shows the latest non-`PENDING` execution status for the case, limited to the requirements the case is linked to. Cells for unlinked requirements are blank; cells for linked requirements that have never been executed show `UNTESTED`.
+
 ## Domain model
 
 ```
@@ -185,10 +251,14 @@ Company
   ├── JiraConfig (optional, 1 per company — credentials + templates)
   └── Projects
         ├── jiraProjectKey / jiraIssueType / jiraParentEpicKey (per-project target)
+        ├── customFields (JSON array — text/textarea/number/select/checkbox)
+        ├── SharedSteps (reusable step library)
+        ├── Webhooks (outbound HTTP on events; HMAC signing + delivery log)
         ├── Milestones
         ├── TestSuites (tree — suites can have sub-suites)
         │     └── TestCases
-        │           ├── steps (ordered JSON array, drag-to-reorder in the UI)
+        │           ├── steps (ordered JSON array, drag-to-reorder, Markdown)
+        │           ├── customFieldValues (keyed by project's customFields)
         │           ├── tags, priority, testLevel
         │           ├── Attachments
         │           └── Comments
@@ -208,18 +278,20 @@ Enums: `Role` (`MANAGER`, `TESTER`), `Priority` (`LOW`/`MEDIUM`/`HIGH`/`CRITICAL
 
 ### Role capabilities
 
-| Action                                              | MANAGER       | TESTER                                    |
-| --------------------------------------------------- | ------------- | ----------------------------------------- |
-| View projects, suites, cases, milestones            | ✔ (all)       | ✔ (all)                                   |
-| View runs & executions                              | ✔ (all)       | only those they created or are assigned to |
-| Create/edit projects, suites, cases, milestones     | ✔             | —                                         |
-| Create test runs                                    | ✔             | —                                         |
-| Execute tests (status, notes, duration, failure)    | ✔             | ✔                                         |
-| Assign / reassign executions (single & bulk)        | ✔             | ✔                                         |
-| Add / remove / change roles of teammates            | ✔             | —                                         |
-| Company Jira credentials + templates                | ✔             | view only                                 |
-| Per-project Jira binding (target project, epic)     | ✔             | view only                                 |
-| Create / link / unlink Jira issues on executions    | ✔             | ✔ (within their visible work)             |
+| Action                                              | ADMIN | MANAGER | TESTER                                    | VIEWER |
+| --------------------------------------------------- | ----- | ------- | ----------------------------------------- | ------ |
+| View projects, suites, cases, milestones            | ✔     | ✔       | ✔                                         | ✔      |
+| View runs & executions                              | ✔     | ✔       | only those they created or are assigned to | ✔      |
+| Create/edit projects, suites, cases, milestones     | ✔     | ✔       | —                                         | —      |
+| Create test runs                                    | ✔     | ✔       | —                                         | —      |
+| Execute tests (status, notes, duration, failure)    | ✔     | ✔       | ✔                                         | —      |
+| Assign / reassign executions (single & bulk)        | ✔     | ✔       | ✔                                         | —      |
+| Add / remove / change roles of teammates            | ✔     | ✔       | —                                         | —      |
+| Company Jira credentials + templates                | ✔     | ✔       | view only                                 | view only |
+| Per-project Jira binding (target project, epic)     | ✔     | ✔       | view only                                 | view only |
+| Create / link / unlink Jira issues on executions    | ✔     | ✔       | ✔ (within their visible work)             | —      |
+| Configure SSO / SAML, manage SCIM tokens            | ✔     | —       | —                                         | —      |
+| Export audit log                                    | ✔     | ✔       | —                                         | —      |
 
 ## Folder layout
 
@@ -242,24 +314,28 @@ backend/
     app.ts             Express setup + router mounting
     db.ts              Prisma client
     middleware/        auth, scope (tenant + tester visibility), logging, error
-    lib/               s3, jira (discover + md→ADF), logger, activity
+    lib/               s3, jira (discover + md→ADF), logger, activity, webhooks
     routes/            auth, users, companies, projects, suites, cases,
                        milestones, runs, executions, attachments, comments,
-                       activity, dashboard, matrix, jira
+                       activity, dashboard, matrix, jira, sharedSteps, webhooks
 frontend/
   src/
     App.tsx            Router
     i18n/              en.json, fr.json — kept in sync (see CLAUDE.md)
-    lib/               api, auth, status, logger, enums
+    lib/               api, auth, status, logger, enums, markdown (safe renderer)
     components/        Layout (collapsible, company header), Comments,
-                       ActivityFeed, LanguageSwitcher
+                       ActivityFeed, LanguageSwitcher,
+                       CustomFieldsEditor, SharedStepsEditor, WebhooksEditor
     pages/             Login, Dashboard, Projects, ProjectDetail,
                        CompanySettings (company Jira creds + templates),
-                       ProjectSettings (per-project Jira binding),
+                       ProjectSettings (tabbed: Jira / custom fields /
+                       shared steps / webhooks),
                        Team, Milestones, Matrix (coverage by platform /
                        connectivity / locale),
-                       SuiteDetail, CaseDetail, Runs, RunDetail
-docker-compose.yml     postgres + minio + minio-init + api + web
+                       SuiteDetail, CaseDetail (Markdown + shared-step
+                       library + custom fields), Runs (list / kanban toggle),
+                       RunDetail
+docker-compose.yml     postgres + minio + minio-init + mailpit + api + web
 ```
 
 ## Local development
@@ -308,14 +384,21 @@ docker compose exec api npx tsx prisma/seed.ts
 
 ## API surface (high level)
 
-All routes live under `/api`. JWT auth is required except `POST /api/auth/login` and `POST /api/auth/signup` (signup creates a new Company and makes the caller its first manager — there is no super-admin). Every authenticated route is scoped to the caller's company; cross-tenant reads return 404 (not 403) so existence is never leaked.
+All routes live under `/api`. Authentication is required except the public endpoints called out below. Every authenticated route is scoped to the caller's company; cross-tenant reads return 404 (not 403) so existence is never leaked.
+
+**Authentication:** send `Authorization: Bearer <token>` where `<token>` is either a JWT (interactive login) or an API token (`ts_…` prefix, SHA-256 hashed). API-token callers can't call the token management endpoints themselves — those require a JWT session.
 
 | Area              | Routes                                                                                                          |
 | ----------------- | --------------------------------------------------------------------------------------------------------------- |
-| Auth              | `POST /auth/login`, `POST /auth/signup`                                                                         |
+| Auth (public)     | `POST /auth/login`, `POST /auth/signup`, `POST /auth/forgot`, `POST /auth/reset`, `GET /auth/invite/:token`, `POST /auth/accept-invite` |
+| Auth (mgr)        | `POST /auth/invite`                                                                                             |
+| Tokens            | `GET /tokens`, `POST /tokens`, `DELETE /tokens/:id` — all require an interactive (JWT) session                  |
 | Users             | `GET /users`, `GET /users/me`, `POST /users` (mgr), `PATCH/DELETE /users/:id` (mgr)                             |
 | Companies         | `GET /companies/current`, `PATCH /companies/current` (mgr)                                                      |
-| Projects          | `GET /projects`, `POST /projects` (mgr), `GET/PATCH/DELETE /projects/:id`                                       |
+| Projects          | `GET /projects`, `POST /projects` (mgr), `GET/PATCH/DELETE /projects/:id`, `GET/PUT /projects/:id/custom-fields` (PUT mgr) |
+| Requirements      | `GET /requirements?projectId=…`, `GET /requirements/:id`, `POST /requirements` (mgr), `PATCH/DELETE /requirements/:id` (mgr), `POST/DELETE /requirements/:id/cases[/:caseId]` (mgr) |
+| Shared steps      | `GET /shared-steps?projectId=…`, `POST /shared-steps` (mgr), `PATCH/DELETE /shared-steps/:id` (mgr)              |
+| Webhooks          | `GET /webhooks/events`, `GET /webhooks?projectId=…`, `POST/PATCH/DELETE /webhooks/:id` (mgr), `POST /webhooks/:id/test` (mgr) |
 | Suites            | `POST /suites` (mgr), `GET/PATCH/DELETE /suites/:id`                                                             |
 | Cases             | `POST /cases` (mgr), `GET /cases/:id`, `PATCH/DELETE /cases/:id` (mgr), `POST /cases/:id/clone` (mgr)            |
 | Milestones        | `GET /milestones`, `POST /milestones` (mgr), `PATCH/DELETE /milestones/:id` (mgr)                                |
@@ -327,18 +410,63 @@ All routes live under `/api`. JWT auth is required except `POST /api/auth/login`
 | Jira (discover)   | `GET /jira/discover/projects`, `/jira/discover/issue-types`, `/jira/discover/epics`                              |
 | Jira (project)    | `GET /jira/projects/:id/binding`, `PUT /jira/projects/:id/binding` (mgr)                                         |
 | Jira (bugs)       | `POST /jira/executions/:id/create-bug`, `POST /jira/executions/:id/link`, `POST /jira/executions/:id/unlink`     |
-| Matrix            | `GET /matrix/projects/:id?dimension=platform\|connectivity\|locale`                                              |
+| Matrix            | `GET /matrix/projects/:id?dimension=platform\|connectivity\|locale\|requirement`                                 |
 | Activity          | `GET /activity?projectId=…&entityType=…&entityId=…`                                                              |
-| Dashboard         | `GET /dashboard`                                                                                                 |
+| Audit             | `GET /audit?userId=…&action=…&from=…&to=…&format=csv` (mgr)                                                      |
+| Case history      | `GET /cases/:id/revisions`                                                                                       |
+| Dashboard         | `GET /dashboard` — includes trend, releaseReadiness, defectAging                                                |
+| SAML (admin)      | `GET/PUT /saml/config` (admin); `GET /saml/:slug/login`, `POST /saml/:slug/acs` (public, IdP-facing)             |
+| SCIM tokens       | `GET/POST/DELETE /scim-tokens` (admin) — issue/revoke provisioning tokens                                       |
+| SCIM v2           | `GET/POST /scim/v2/Users`, `GET/PATCH/DELETE /scim/v2/Users/:id` (Bearer SCIM token)                             |
 
-`(mgr)` = manager-only.
+`(mgr)` = manager-level (MANAGER or ADMIN). `(admin)` = ADMIN-only.
 
 ## Security notes
 
-- JWTs are signed with `JWT_SECRET` — rotate this in production.
-- Attachments are stored privately in MinIO; downloads go through signed URLs served by `S3_PUBLIC_ENDPOINT`.
-- `.env` is gitignored by default. Never commit a populated `.env` or `seed.hapster.ts`.
-- All multi-tenant reads are scoped by `companyId` at the query level (see `backend/src/middleware/scope.ts`).
+### Authentication
+
+- **JWTs** are signed with `JWT_SECRET`. The API refuses to start when `NODE_ENV=production` and `JWT_SECRET` is unset or equal to the default placeholder — use `openssl rand -hex 48` to generate a strong value.
+- **API tokens** (`ts_…` prefix) are stored as SHA-256 hashes — a compromised database row can't be used to impersonate the caller. Plaintext is shown exactly once at creation.
+- **Token management endpoints require a JWT session** — API-token callers can't mint, list, or revoke tokens, so a leaked token can't be used to create fresh credentials.
+- **Password reset** wipes the door on both sides: every outstanding JWT for that user is revoked (via `passwordUpdatedAt` compared against the JWT's `iat`) and every API token they own is deleted. If a password leaks, a single reset kicks everyone off the account.
+- **Login is timing-neutral** — bcrypt runs even when the email is unknown so response latency can't be used to enumerate accounts.
+
+### Rate limiting
+
+All credential-adjacent endpoints are rate-limited per IP:
+
+| Endpoint              | Window | Max requests |
+| --------------------- | ------ | ------------ |
+| `POST /auth/login`    | 1 min  | 10           |
+| `POST /auth/signup`   | 1 hour | 5            |
+| `POST /auth/forgot`   | 1 hour | 5            |
+| `POST /auth/reset`    | 1 min  | 10           |
+| `POST /auth/invite`   | 1 hour | 30           |
+| `GET /auth/invite/:t` | 1 min  | 30           |
+| `POST /auth/accept-invite` | 1 min | 10      |
+
+When deployed behind a reverse proxy, set `TRUST_PROXY` (e.g. `1` for a single hop) so limits key off the real client IP instead of the proxy.
+
+### Password policy
+
+Applied on signup, password reset, and invite-accept:
+
+- Minimum 10 characters, maximum 128.
+- Rejects a small list of common passwords (`password`, `12345678`, `qwerty`, `admin123`, etc).
+- Login does not re-validate strength, so pre-policy accounts keep working until their next reset.
+
+### CORS
+
+Set `CORS_ALLOWED_ORIGINS` to a comma-separated list of origins the browser may call from (scheme + host + port). In development, an empty list auto-reflects the request's Origin; in production, an empty list denies all cross-origin requests.
+
+### Other
+
+- **Reset / invite tokens** are cryptographically random 192-bit values, SHA-256 hashed at rest, and single-use. Raw tokens are never logged — only the token row ID is.
+- **`devToken` field** in `/auth/forgot` and `/auth/invite` responses is only populated when `NODE_ENV !== "production"`, so the plaintext never leaks in prod even if the UI would still render it.
+- **Expired `PasswordResetToken` and `InviteToken` rows** are swept every 6 hours by a background task (`backend/src/lib/cleanup.ts`), so the tables don't grow unbounded.
+- **Attachments** are stored privately in MinIO; downloads go through signed URLs served by `S3_PUBLIC_ENDPOINT`.
+- **`.env`** is gitignored by default. Never commit a populated `.env` or `seed.hapster.ts`.
+- **All multi-tenant reads** are scoped by `companyId` at the query level (see `backend/src/middleware/scope.ts`). Cross-tenant lookups return 404 (not 403) so existence isn't leaked.
 
 ## Troubleshooting
 
@@ -348,17 +476,41 @@ All routes live under `/api`. JWT auth is required except `POST /api/auth/login`
 - **Port already in use** — override the corresponding `*_HOST_PORT` in `.env`.
 - **Seed did nothing on a fresh DB** — check `docker compose logs api | grep Seed`. Every seed step logs either "created" or "skipping".
 
+## Webhooks
+
+Each project can register outbound webhooks under **Project Settings → Webhooks**. Supported events:
+
+| Event                  | Fires when                                                             |
+| ---------------------- | ---------------------------------------------------------------------- |
+| `run.created`          | a test run is created                                                  |
+| `run.completed`        | a test run's status is set to `COMPLETED`                              |
+| `execution.passed`     | an execution transitions to `PASSED`                                   |
+| `execution.failed`     | an execution transitions to `FAILED`                                   |
+| `jira.bug_created`     | a Jira bug is auto-filed for a failed execution                        |
+
+Request body:
+
+```json
+{
+  "event": "execution.failed",
+  "projectId": "…",
+  "deliveredAt": "2026-04-15T09:00:00.000Z",
+  "data": { "executionId": "…", "runId": "…", "caseId": "…", "...": "..." }
+}
+```
+
+If a signing secret is configured, every request carries
+`x-testsuits-signature: <hex>` where `<hex>` is `HMAC-SHA256(secret, rawBody)`.
+Every delivery is recorded (status + error) and shown on the webhook row. Use
+the **test** button to fire a sample payload at any time.
+
 ## Roadmap
 
-- Requirements / user stories as first-class objects (bidirectional tracing)
-- Custom fields per project
-- Shared / reusable test steps
-- Rich-text editor for preconditions and steps
-- Webhook notifications on failure
+- SSO end-to-end against a real IdP (config + ACS routes are in place; wire passport-saml in `backend/src/routes/saml.ts`)
+- SCIM groups / role-to-group mapping (users work today)
 - Playwright / Cypress reporter packages
 - Traceability matrix report
 - Test case versioning / history diff
-- Kanban board view for runs
 
 ## License
 

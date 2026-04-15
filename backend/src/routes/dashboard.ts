@@ -142,6 +142,97 @@ dashboardRouter.get("/", async (req: AuthedRequest, res, next) => {
         .filter(Boolean) as typeof topFailingCases;
     }
 
+    // --- Trend: executions per day, pass rate per day (last 30d) ----------
+    const dailyRaw = await prisma.testExecution.findMany({
+      where: executionWhere(req.user!, {
+        ...runProjectFilter,
+        executedAt: { gte: last30Days },
+      }),
+      select: { status: true, executedAt: true },
+    });
+    const buckets = new Map<string, { total: number; passed: number; failed: number }>();
+    for (let i = 0; i < 30; i++) {
+      const d = new Date(now);
+      d.setUTCDate(d.getUTCDate() - (29 - i));
+      const key = d.toISOString().slice(0, 10);
+      buckets.set(key, { total: 0, passed: 0, failed: 0 });
+    }
+    for (const e of dailyRaw) {
+      if (!e.executedAt) continue;
+      const key = e.executedAt.toISOString().slice(0, 10);
+      const b = buckets.get(key);
+      if (!b) continue;
+      b.total++;
+      if (e.status === "PASSED") b.passed++;
+      else if (e.status === "FAILED") b.failed++;
+    }
+    const trend = Array.from(buckets.entries()).map(([day, b]) => ({
+      day,
+      total: b.total,
+      passed: b.passed,
+      failed: b.failed,
+      passRate: b.total ? Math.round((b.passed / b.total) * 100) : null,
+    }));
+
+    // --- Release readiness: per-milestone aggregate ----------------------
+    const readinessMilestones = await prisma.milestone.findMany({
+      where: milestoneWhere(req.user!, {
+        ...projectFilter,
+        status: { in: ["PLANNED", "ACTIVE"] },
+      }),
+      orderBy: [{ dueDate: "asc" }, { createdAt: "desc" }],
+      take: 10,
+      include: {
+        project: { select: { name: true } },
+        runs: { select: { id: true, executions: { select: { status: true, case: { select: { priority: true } } } } } },
+      },
+    });
+    const releaseReadiness = readinessMilestones.map((m) => {
+      const counts = { PENDING: 0, PASSED: 0, FAILED: 0, BLOCKED: 0, SKIPPED: 0 } as Record<string, number>;
+      let blockerOpen = 0;
+      for (const r of m.runs) for (const e of r.executions) {
+        counts[e.status]++;
+        if ((e.case.priority === "CRITICAL" || e.case.priority === "HIGH") && (e.status === "FAILED" || e.status === "BLOCKED")) {
+          blockerOpen++;
+        }
+      }
+      const total = Object.values(counts).reduce((a, b) => a + b, 0);
+      const done = total - counts.PENDING;
+      const passRateOfExecuted = done ? Math.round((counts.PASSED / done) * 100) : 0;
+      return {
+        id: m.id,
+        name: m.name,
+        project: m.project,
+        dueDate: m.dueDate,
+        status: m.status,
+        total,
+        done,
+        executedPct: total ? Math.round((done / total) * 100) : 0,
+        passed: counts.PASSED,
+        failed: counts.FAILED,
+        blocked: counts.BLOCKED,
+        passRateOfExecuted,
+        blockerOpen,
+      };
+    });
+
+    // --- Defect aging: buckets based on first-FAILED executedAt ----------
+    const failedExecs = await prisma.testExecution.findMany({
+      where: executionWhere(req.user!, { ...runProjectFilter, status: "FAILED" }),
+      select: { executedAt: true, createdAt: true, jiraIssueKey: true },
+      take: 5000,
+    });
+    const ageBuckets = { "0-7d": 0, "8-30d": 0, "31-90d": 0, "90d+": 0 } as Record<string, number>;
+    const dayMs = 24 * 60 * 60 * 1000;
+    for (const e of failedExecs) {
+      const ref = e.executedAt ?? e.createdAt;
+      const ageDays = Math.floor((now.getTime() - ref.getTime()) / dayMs);
+      if (ageDays <= 7) ageBuckets["0-7d"]++;
+      else if (ageDays <= 30) ageBuckets["8-30d"]++;
+      else if (ageDays <= 90) ageBuckets["31-90d"]++;
+      else ageBuckets["90d+"]++;
+    }
+
     res.json({
       totals: {
         projects,
@@ -158,6 +249,9 @@ dashboardRouter.get("/", async (req: AuthedRequest, res, next) => {
       activeRuns,
       upcomingMilestones,
       topFailingCases,
+      trend,
+      releaseReadiness,
+      defectAging: { buckets: ageBuckets, totalFailed: failedExecs.length },
     });
   } catch (e) {
     next(e);

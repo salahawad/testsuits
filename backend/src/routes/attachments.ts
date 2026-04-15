@@ -2,7 +2,7 @@ import { Router } from "express";
 import multer from "multer";
 import { randomUUID } from "crypto";
 import { prisma } from "../db";
-import { AuthedRequest } from "../middleware/auth";
+import { AuthedRequest, requireWrite } from "../middleware/auth";
 import { httpError } from "../middleware/error";
 import { deleteObject, getDownloadUrl, putObject } from "../lib/s3";
 import { caseWhere, executionWhere } from "../middleware/scope";
@@ -27,7 +27,7 @@ async function accessibleAttachment(req: AuthedRequest, id: string) {
   });
 }
 
-attachmentsRouter.post("/", upload.single("file"), async (req: AuthedRequest, res, next) => {
+attachmentsRouter.post("/", requireWrite, upload.single("file"), async (req: AuthedRequest, res, next) => {
   try {
     if (!req.file) throw httpError(400, "No file uploaded");
     const { caseId, executionId } = req.body as { caseId?: string; executionId?: string };
@@ -79,7 +79,7 @@ attachmentsRouter.get("/:id/download", async (req: AuthedRequest, res, next) => 
   }
 });
 
-attachmentsRouter.delete("/:id", async (req: AuthedRequest, res, next) => {
+attachmentsRouter.delete("/:id", requireWrite, async (req: AuthedRequest, res, next) => {
   try {
     const attachment = await accessibleAttachment(req, req.params.id);
     if (!attachment) throw httpError(404, "Attachment not found");

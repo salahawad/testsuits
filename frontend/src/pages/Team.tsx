@@ -1,34 +1,44 @@
 import { FormEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Plus, Trash2 } from "lucide-react";
+import { Copy, Plus, Trash2 } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { logger } from "../lib/logger";
+
+type InviteResult = {
+  id: string;
+  email: string;
+  name: string;
+  role: "MANAGER" | "TESTER";
+  devToken?: string;
+};
 
 export function Team() {
   const { t } = useTranslation();
   const user = useAuth((s) => s.user);
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ email: "", name: "", password: "", role: "TESTER" as "MANAGER" | "TESTER" });
+  const [form, setForm] = useState({ email: "", name: "", role: "TESTER" as "MANAGER" | "TESTER" });
   const [err, setErr] = useState<string | null>(null);
+  const [lastInvite, setLastInvite] = useState<InviteResult | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const { data: users = [] } = useQuery({
     queryKey: ["users"],
     queryFn: async () => (await api.get("/users")).data,
   });
 
-  const create = useMutation({
-    mutationFn: async () => (await api.post("/users", form)).data,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["users"] });
+  const invite = useMutation({
+    mutationFn: async () => (await api.post("/auth/invite", form)).data as InviteResult,
+    onSuccess: (data) => {
+      setLastInvite(data);
       setOpen(false);
-      setForm({ email: "", name: "", password: "", role: "TESTER" });
+      setForm({ email: "", name: "", role: "TESTER" });
       setErr(null);
-      logger.info("team member added via UI");
+      logger.info("teammate invite created");
     },
-    onError: (e: any) => setErr(e.response?.data?.error ?? "Failed"),
+    onError: (e: any) => setErr(e.response?.data?.error ?? "Invite failed"),
   });
 
   const remove = useMutation({
@@ -46,7 +56,19 @@ export function Team() {
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
-    create.mutate();
+    invite.mutate();
+  }
+
+  function inviteUrl(token: string) {
+    return `${window.location.origin}/invite/${token}`;
+  }
+
+  function copyInvite() {
+    if (!lastInvite?.devToken) return;
+    navigator.clipboard.writeText(inviteUrl(lastInvite.devToken)).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
   }
 
   return (
@@ -59,14 +81,15 @@ export function Team() {
           </p>
         </div>
         {isManager && (
-          <button className="btn-primary" onClick={() => setOpen(true)}>
-            <Plus size={16} /> {t("team.add_member")}
+          <button className="btn-primary" onClick={() => { setOpen(true); setLastInvite(null); }}>
+            <Plus size={16} /> {t("team.invite_member")}
           </button>
         )}
       </header>
 
       {open && (
         <form onSubmit={onSubmit} className="card p-5 space-y-3">
+          <p className="text-sm text-slate-500">{t("team.invite_subtitle")}</p>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="label">{t("auth.name")}</label>
@@ -77,25 +100,41 @@ export function Team() {
               <input type="email" className="input" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">{t("auth.password")}</label>
-              <input type="password" className="input" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} required minLength={6} />
-            </div>
-            <div>
-              <label className="label">{t("team.role")}</label>
-              <select className="input" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as any })}>
-                <option value="TESTER">{t("team.tester")}</option>
-                <option value="MANAGER">{t("team.manager")}</option>
-              </select>
-            </div>
+          <div>
+            <label className="label">{t("team.role")}</label>
+            <select className="input" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as any })}>
+              <option value="TESTER">{t("team.tester")}</option>
+              <option value="MANAGER">{t("team.manager")}</option>
+            </select>
           </div>
           {err && <div className="text-sm text-red-600">{err}</div>}
           <div className="flex gap-2 justify-end">
             <button type="button" className="btn-secondary" onClick={() => setOpen(false)}>{t("common.cancel")}</button>
-            <button type="submit" className="btn-primary" disabled={create.isPending}>{t("common.create")}</button>
+            <button type="submit" className="btn-primary" disabled={invite.isPending}>
+              {invite.isPending ? t("common.please_wait") : t("team.invite_member")}
+            </button>
           </div>
         </form>
+      )}
+
+      {lastInvite?.devToken && import.meta.env.DEV && (
+        <div className="card p-5 space-y-3 border-l-4 border-amber-400">
+          <div>
+            <h2 className="font-semibold text-amber-800">{t("team.invite_sent")}</h2>
+            <p className="text-sm text-slate-600 mt-1">
+              {lastInvite.name} &lt;{lastInvite.email}&gt; · {t(`team.${lastInvite.role.toLowerCase()}`)}
+            </p>
+          </div>
+          <div className="flex items-center gap-2 rounded-md bg-slate-900 text-slate-100 px-3 py-2 font-mono text-xs">
+            <span className="flex-1 break-all">{inviteUrl(lastInvite.devToken)}</span>
+            <button type="button" className="text-slate-300 hover:text-white flex items-center gap-1" onClick={copyInvite}>
+              <Copy size={14} /> {copied ? t("tokens.copied") : t("tokens.copy")}
+            </button>
+          </div>
+          <div className="flex justify-end">
+            <button className="btn-secondary" onClick={() => setLastInvite(null)}>{t("common.close")}</button>
+          </div>
+        </div>
       )}
 
       <div className="card divide-y divide-slate-100">

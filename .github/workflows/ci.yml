@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  backend:
+    name: Backend — typecheck + prisma validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: backend/package-lock.json
+      - name: Install
+        working-directory: backend
+        run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+      - name: Prisma validate
+        working-directory: backend
+        run: npx prisma validate
+      - name: Prisma generate
+        working-directory: backend
+        run: npx prisma generate
+      - name: Typecheck
+        working-directory: backend
+        run: npx tsc --noEmit
+      - name: Build
+        working-directory: backend
+        run: npm run build
+
+  frontend:
+    name: Frontend — typecheck + build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+      - name: Typecheck + build
+        working-directory: frontend
+        run: npm run build
+      - name: i18n parity
+        working-directory: frontend
+        # Both en.json and fr.json must have the same set of key paths.
+        run: |
+          node -e "
+          const fs = require('fs');
+          const flatten = (o, p = '') =>
+            Object.entries(o).flatMap(([k, v]) =>
+              v && typeof v === 'object' && !Array.isArray(v)
+                ? flatten(v, p + k + '.')
+                : [p + k]
+            );
+          const en = flatten(JSON.parse(fs.readFileSync('src/i18n/en.json', 'utf8'))).sort();
+          const fr = flatten(JSON.parse(fs.readFileSync('src/i18n/fr.json', 'utf8'))).sort();
+          const missingInFr = en.filter(k => !fr.includes(k));
+          const missingInEn = fr.filter(k => !en.includes(k));
+          if (missingInFr.length || missingInEn.length) {
+            console.error('i18n key mismatch');
+            if (missingInFr.length) console.error('Missing in fr.json:', missingInFr);
+            if (missingInEn.length) console.error('Missing in en.json:', missingInEn);
+            process.exit(1);
+          }
+          console.log('i18n key parity OK (' + en.length + ' keys)');
+          "

@@ -8,8 +8,10 @@ datasource db {
 }
 
 enum Role {
+  ADMIN
   MANAGER
   TESTER
+  VIEWER
 }
 
 enum Priority {
@@ -52,6 +54,10 @@ enum ActivityAction {
   COMMENT_ADDED
   JIRA_LINKED
   ATTACHMENT_ADDED
+  SHARED_STEP_CREATED
+  SHARED_STEP_UPDATED
+  WEBHOOK_CONFIGURED
+  CUSTOM_FIELDS_UPDATED
 }
 
 enum TestLevel {
@@ -76,31 +82,95 @@ enum Connectivity {
 }
 
 model Company {
-  id          String     @id @default(cuid())
+  id          String        @id @default(cuid())
   name        String
-  slug        String     @unique
-  createdAt   DateTime   @default(now())
+  slug        String        @unique
+  createdAt   DateTime      @default(now())
   users       User[]
   projects    Project[]
   jiraConfig  JiraConfig?
+  invites     InviteToken[]
+  samlConfig  SamlConfig?
+  scimTokens  ScimToken[]
+}
+
+model SamlConfig {
+  id               String   @id @default(cuid())
+  companyId        String   @unique
+  company          Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  entityId         String
+  ssoUrl           String
+  x509Cert         String
+  emailAttribute   String   @default("email")
+  nameAttribute    String   @default("name")
+  defaultRole      Role     @default(TESTER)
+  enabled          Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model ScimToken {
+  id         String   @id @default(cuid())
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name       String
+  tokenHash  String   @unique
+  lastUsedAt DateTime?
+  createdAt  DateTime @default(now())
+  @@index([companyId])
 }
 
 model User {
-  id              String           @id @default(cuid())
-  email           String           @unique
+  id              String               @id @default(cuid())
+  email           String               @unique
   name            String
   passwordHash    String
-  role            Role             @default(TESTER)
+  // Bumped on password change / forced sign-out. Any JWT with iat < this value
+  // is treated as revoked, even if not yet expired.
+  passwordUpdatedAt DateTime?
+  role            Role                 @default(TESTER)
   companyId       String
-  company         Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  createdAt       DateTime         @default(now())
+  company         Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt       DateTime             @default(now())
   runs            TestRun[]
   executions      TestExecution[]
-  assignedExecs   TestExecution[]  @relation("ExecAssignee")
+  assignedExecs   TestExecution[]      @relation("ExecAssignee")
   attachments     Attachment[]
   comments        Comment[]
   activities      ActivityLog[]
   apiTokens       ApiToken[]
+  sharedSteps     SharedStep[]
+  resetTokens     PasswordResetToken[]
+  sentInvites     InviteToken[]        @relation("InvitedBy")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId, expiresAt])
+}
+
+model InviteToken {
+  id           String    @id @default(cuid())
+  companyId    String
+  company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  email        String
+  name         String
+  role         Role
+  tokenHash    String    @unique
+  expiresAt    DateTime
+  invitedById  String
+  invitedBy    User      @relation("InvitedBy", fields: [invitedById], references: [id])
+  acceptedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  @@index([companyId, email])
 }
 
 model ApiToken {
@@ -114,9 +184,9 @@ model ApiToken {
 }
 
 model Project {
-  id                    String       @id @default(cuid())
+  id                    String        @id @default(cuid())
   companyId             String
-  company               Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company               Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   key                   String
   name                  String
   description           String?
@@ -125,13 +195,35 @@ model Project {
   jiraIssueType         String?
   jiraParentEpicKey     String?
   jiraParentEpicSummary String?
-  createdAt             DateTime     @default(now())
+  createdAt             DateTime      @default(now())
+  customFields          Json          @default("[]")
   suites                TestSuite[]
   runs                  TestRun[]
   milestones            Milestone[]
   activities            ActivityLog[]
+  sharedSteps           SharedStep[]
+  webhooks              Webhook[]
+  requirementItems      Requirement[]
 
   @@unique([companyId, key])
+}
+
+// First-class requirements. Free-text `TestCase.requirements[]` is still
+// supported for back-compat; new workflows should link to Requirement rows
+// so the traceability matrix has something to pivot on.
+model Requirement {
+  id          String     @id @default(cuid())
+  projectId   String
+  project     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  externalRef String
+  title       String
+  description String?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  cases       TestCase[] @relation("CaseRequirements")
+
+  @@unique([projectId, externalRef])
+  @@index([projectId])
 }
 
 // Company-wide Jira credentials + templates. Per-project targeting (which Jira
@@ -188,6 +280,7 @@ model TestCase {
   steps            Json            @default("[]")
   estimatedMinutes Int?
   requirements     String[]        @default([])
+  customFieldValues Json           @default("{}")
   cloneOfId        String?
   cloneOf          TestCase?       @relation("CaseClone", fields: [cloneOfId], references: [id])
   clones           TestCase[]      @relation("CaseClone")
@@ -196,6 +289,28 @@ model TestCase {
   executions       TestExecution[]
   attachments      Attachment[]
   comments         Comment[]
+  requirementLinks Requirement[]   @relation("CaseRequirements")
+  revisions        TestCaseRevision[]
+}
+
+model TestCaseRevision {
+  id                String   @id @default(cuid())
+  caseId            String
+  case              TestCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  version           Int
+  title             String
+  preconditions     String?
+  priority          Priority
+  testLevel         TestLevel
+  tags              String[]
+  steps             Json
+  estimatedMinutes  Int?
+  requirements      String[]
+  customFieldValues Json
+  authorId          String?
+  createdAt         DateTime @default(now())
+  @@unique([caseId, version])
+  @@index([caseId, createdAt])
 }
 
 model TestRun {
@@ -288,4 +403,46 @@ model ActivityLog {
 
   @@index([projectId, createdAt])
   @@index([entityType, entityId])
+}
+
+model SharedStep {
+  id          String   @id @default(cuid())
+  projectId   String
+  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name        String
+  action      String
+  expected    String
+  createdById String?
+  createdBy   User?    @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([projectId])
+}
+
+model Webhook {
+  id         String            @id @default(cuid())
+  projectId  String
+  project    Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  url        String
+  secret     String?
+  events     String[]          @default([])
+  active     Boolean           @default(true)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
+  deliveries WebhookDelivery[]
+
+  @@index([projectId])
+}
+
+model WebhookDelivery {
+  id          String   @id @default(cuid())
+  webhookId   String
+  webhook     Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  event       String
+  status      Int?
+  error       String?
+  attemptedAt DateTime @default(now())
+
+  @@index([webhookId, attemptedAt])
 }

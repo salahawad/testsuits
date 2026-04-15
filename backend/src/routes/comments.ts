@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db";
-import { AuthedRequest } from "../middleware/auth";
+import { AuthedRequest, requireWrite } from "../middleware/auth";
 import { httpError } from "../middleware/error";
 import { caseWhere, executionWhere, runWhere } from "../middleware/scope";
 import { logActivity } from "../lib/activity";
@@ -48,7 +48,7 @@ commentsRouter.get("/", async (req: AuthedRequest, res, next) => {
   }
 });
 
-commentsRouter.post("/", async (req: AuthedRequest, res, next) => {
+commentsRouter.post("/", requireWrite, async (req: AuthedRequest, res, next) => {
   try {
     const data = create.parse(req.body);
     const where = await accessibleCommentWhere(req, data);
@@ -93,7 +93,7 @@ commentsRouter.post("/", async (req: AuthedRequest, res, next) => {
   }
 });
 
-commentsRouter.delete("/:id", async (req: AuthedRequest, res, next) => {
+commentsRouter.delete("/:id", requireWrite, async (req: AuthedRequest, res, next) => {
   try {
     const comment = await prisma.comment.findUnique({ where: { id: req.params.id } });
     if (!comment) throw httpError(404, "Comment not found");

@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { ArrowLeft, Plus, Trash2, Upload, Download, Copy, ExternalLink, GripVertical } from "lucide-react";
+import { ArrowLeft, Clock, Plus, Trash2, Upload, Download, Copy, ExternalLink, GripVertical, BookOpen, X, Link2 } from "lucide-react";
 import { ChangeEvent, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   DndContext,
   DragEndEvent,
@@ -22,16 +23,29 @@ import { CSS } from "@dnd-kit/utilities";
 import { api } from "../lib/api";
 import { priorityColors } from "../lib/status";
 import { Comments } from "../components/Comments";
+import { Markdown } from "../lib/markdown";
+import { RichEditor } from "../components/RichEditor";
+import { logger } from "../lib/logger";
 
-type Step = { action: string; expected: string };
+type Step = { action: string; expected: string; sharedStepId?: string | null };
+type CustomField = {
+  id: string;
+  label: string;
+  type: "text" | "textarea" | "number" | "select" | "checkbox";
+  required: boolean;
+  options?: string[];
+};
+type SharedStep = { id: string; name: string; action: string; expected: string };
 
 export function CaseDetail() {
+  const { t } = useTranslation();
   const { id } = useParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<any>(null);
   const [stepIds, setStepIds] = useState<string[]>([]);
+  const [libraryOpen, setLibraryOpen] = useState(false);
   const stepIdCounter = useRef(0);
 
   const sensors = useSensors(
@@ -54,10 +68,32 @@ export function CaseDetail() {
     setDraft({ ...draft, steps: arrayMove(draft.steps, from, to) });
   }
 
+  const [historyOpen, setHistoryOpen] = useState(false);
+
   const { data: testCase, isLoading } = useQuery({
     queryKey: ["case", id],
     queryFn: async () => (await api.get(`/cases/${id}`)).data,
     enabled: !!id,
+  });
+
+  const { data: revisions = [] } = useQuery({
+    queryKey: ["case-revisions", id],
+    queryFn: async () => (await api.get(`/cases/${id}/revisions`)).data,
+    enabled: !!id && historyOpen,
+  });
+
+  const projectId = testCase?.suite?.project?.id;
+
+  const { data: customFields = [] } = useQuery<CustomField[]>({
+    queryKey: ["custom-fields", projectId],
+    queryFn: async () => (await api.get(`/projects/${projectId}/custom-fields`)).data,
+    enabled: !!projectId,
+  });
+
+  const { data: sharedSteps = [] } = useQuery<SharedStep[]>({
+    queryKey: ["shared-steps", projectId],
+    queryFn: async () => (await api.get(`/shared-steps`, { params: { projectId } })).data,
+    enabled: !!projectId && libraryOpen,
   });
 
   const save = useMutation({
@@ -116,9 +152,25 @@ export function CaseDetail() {
       steps: initialSteps,
       estimatedMinutes: testCase.estimatedMinutes ?? "",
       requirements: [...(testCase.requirements ?? [])],
+      customFieldValues: { ...(testCase.customFieldValues ?? {}) },
     });
     setStepIds(initialSteps.map(() => nextStepId()));
     setEditing(true);
+  }
+
+  function insertSharedStep(s: SharedStep) {
+    const newStep: Step = { action: s.action, expected: s.expected, sharedStepId: s.id };
+    setDraft({ ...draft, steps: [...(draft?.steps ?? []), newStep] });
+    setStepIds([...stepIds, nextStepId()]);
+    setLibraryOpen(false);
+    logger.info("shared step inserted", { sharedStepId: s.id, caseId: id });
+  }
+
+  function setCustomFieldValue(fieldId: string, value: unknown) {
+    setDraft({
+      ...draft,
+      customFieldValues: { ...(draft.customFieldValues ?? {}), [fieldId]: value },
+    });
   }
 
   if (isLoading) return <div className="text-slate-500">Loading…</div>;
@@ -149,6 +201,7 @@ export function CaseDetail() {
             </div>
           </div>
           <div className="flex gap-2">
+            <button className="btn-secondary" onClick={() => setHistoryOpen((v) => !v)}><Clock size={14} /> History</button>
             <button className="btn-secondary" onClick={() => clone.mutate()}><Copy size={14} /> Clone</button>
             <button className="btn-secondary" onClick={startEdit}>Edit</button>
             <button className="btn-secondary text-red-600" onClick={() => { if (confirm("Delete this case?")) remove.mutate(); }}>
@@ -210,30 +263,52 @@ export function CaseDetail() {
         </section>
       )}
 
+      <LinkedRequirements
+        caseId={testCase.id}
+        projectId={testCase.suite.project.id}
+        editing={editing}
+        linked={testCase.requirementLinks ?? []}
+      />
+
+
       <section className="card p-5">
-        <h2 className="font-semibold mb-2">Preconditions</h2>
+        <h2 className="font-semibold mb-2">{t("cases.preconditions")}</h2>
         {!editing ? (
-          <p className="text-sm text-slate-600 whitespace-pre-wrap">{testCase.preconditions || "—"}</p>
+          testCase.preconditions
+            ? <Markdown source={testCase.preconditions} className="text-sm text-slate-600" />
+            : <p className="text-sm text-slate-600">—</p>
         ) : (
-          <textarea className="input" rows={3} value={draft.preconditions} onChange={(e) => setDraft({ ...draft, preconditions: e.target.value })} />
+          <RichEditor
+            value={draft.preconditions}
+            onChange={(v) => setDraft({ ...draft, preconditions: v })}
+            minHeight={80}
+          />
         )}
       </section>
 
       <section className="card p-5">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold">Steps</h2>
+          <h2 className="font-semibold">{t("cases.steps")}</h2>
           {editing && (
-            <button
-              className="btn-secondary"
-              onClick={() => {
-                setDraft({ ...draft, steps: [...draft.steps, { action: "", expected: "" }] });
-                setStepIds([...stepIds, nextStepId()]);
-              }}
-            >
-              <Plus size={14} /> Step
-            </button>
+            <div className="flex gap-2">
+              <button className="btn-secondary" onClick={() => setLibraryOpen(true)}>
+                <BookOpen size={14} /> {t("cases.shared_library")}
+              </button>
+              <button
+                className="btn-secondary"
+                onClick={() => {
+                  setDraft({ ...draft, steps: [...draft.steps, { action: "", expected: "" }] });
+                  setStepIds([...stepIds, nextStepId()]);
+                }}
+              >
+                <Plus size={14} /> {t("cases.step")}
+              </button>
+            </div>
           )}
         </div>
+        {editing && (
+          <p className="text-xs text-slate-500 mb-2">{t("cases.markdown_hint")}</p>
+        )}
         {steps.length === 0 ? (
           <div className="text-sm text-slate-500">No steps defined.</div>
         ) : editing ? (
@@ -264,12 +339,19 @@ export function CaseDetail() {
                 <div className="w-7 h-7 rounded-full bg-brand-50 text-brand-700 text-sm font-semibold flex items-center justify-center flex-shrink-0">{i + 1}</div>
                 <div className="flex-1 grid grid-cols-2 gap-3">
                   <div>
-                    <div className="text-xs text-slate-500 mb-0.5">Action</div>
-                    <div className="text-sm">{s.action}</div>
+                    <div className="text-xs text-slate-500 mb-0.5 flex items-center gap-1">
+                      {t("cases.action")}
+                      {s.sharedStepId && (
+                        <span className="badge bg-violet-100 text-violet-700 text-[10px]" title={t("cases.linked_shared_step")}>
+                          <Link2 size={10} /> {t("cases.shared")}
+                        </span>
+                      )}
+                    </div>
+                    <Markdown source={s.action} className="text-sm" />
                   </div>
                   <div>
-                    <div className="text-xs text-slate-500 mb-0.5">Expected</div>
-                    <div className="text-sm">{s.expected}</div>
+                    <div className="text-xs text-slate-500 mb-0.5">{t("cases.expected")}</div>
+                    <Markdown source={s.expected} className="text-sm" />
                   </div>
                 </div>
               </li>
@@ -277,6 +359,94 @@ export function CaseDetail() {
           </ol>
         )}
       </section>
+
+      {customFields.length > 0 && (
+        <section className="card p-5">
+          <h2 className="font-semibold mb-3">{t("cases.custom_fields")}</h2>
+          {!editing ? (
+            <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+              {customFields.map((f) => {
+                const v = testCase.customFieldValues?.[f.id];
+                const display =
+                  f.type === "checkbox"
+                    ? v
+                      ? t("common.yes")
+                      : t("common.no")
+                    : v == null || v === ""
+                      ? "—"
+                      : String(v);
+                return (
+                  <div key={f.id} className="flex flex-col">
+                    <dt className="text-xs text-slate-500">{f.label}</dt>
+                    <dd className="text-slate-700">{display}</dd>
+                  </div>
+                );
+              })}
+            </dl>
+          ) : (
+            <div className="grid grid-cols-2 gap-3">
+              {customFields.map((f) => {
+                const v = draft.customFieldValues?.[f.id];
+                const common = { required: f.required };
+                return (
+                  <div key={f.id}>
+                    <label className="label">
+                      {f.label}
+                      {f.required && <span className="text-red-500 ml-1">*</span>}
+                    </label>
+                    {f.type === "text" && (
+                      <input className="input" value={v ?? ""} {...common}
+                        onChange={(e) => setCustomFieldValue(f.id, e.target.value)} />
+                    )}
+                    {f.type === "textarea" && (
+                      <textarea className="input" rows={3} value={v ?? ""} {...common}
+                        onChange={(e) => setCustomFieldValue(f.id, e.target.value)} />
+                    )}
+                    {f.type === "number" && (
+                      <input type="number" className="input" value={v ?? ""} {...common}
+                        onChange={(e) => setCustomFieldValue(f.id, e.target.value === "" ? null : Number(e.target.value))} />
+                    )}
+                    {f.type === "select" && (
+                      <select className="input" value={(v as string) ?? ""} {...common}
+                        onChange={(e) => setCustomFieldValue(f.id, e.target.value || null)}>
+                        <option value="">—</option>
+                        {(f.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+                      </select>
+                    )}
+                    {f.type === "checkbox" && (
+                      <label className="flex items-center gap-2 text-sm mt-1">
+                        <input type="checkbox" checked={!!v}
+                          onChange={(e) => setCustomFieldValue(f.id, e.target.checked)} />
+                        {f.label}
+                      </label>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
+
+      {libraryOpen && (
+        <div className="fixed inset-0 bg-black/40 z-20 flex items-center justify-center p-4" onClick={() => setLibraryOpen(false)}>
+          <div className="bg-white rounded-lg shadow-xl max-w-xl w-full max-h-[80vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b border-slate-100">
+              <h3 className="font-semibold">{t("cases.shared_library")}</h3>
+              <button className="text-slate-400 hover:text-slate-700" onClick={() => setLibraryOpen(false)}><X size={18} /></button>
+            </div>
+            <div className="p-4 space-y-2">
+              {sharedSteps.length === 0 && <div className="text-sm text-slate-500">{t("cases.no_shared_steps")}</div>}
+              {sharedSteps.map((s) => (
+                <button key={s.id} className="w-full text-left border border-slate-200 hover:border-brand-400 rounded-md p-3" onClick={() => insertSharedStep(s)}>
+                  <div className="font-medium text-sm">{s.name}</div>
+                  <div className="text-xs text-slate-500 mt-1 line-clamp-2">{s.action}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {editing && (
         <div className="flex gap-2 justify-end">
@@ -312,6 +482,35 @@ export function CaseDetail() {
           </ul>
         )}
       </section>
+
+      {historyOpen && (
+        <section className="card p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="font-semibold">History</h2>
+            <button className="text-slate-400 hover:text-slate-700" onClick={() => setHistoryOpen(false)}><X size={16} /></button>
+          </div>
+          {(revisions as any[]).length === 0 ? (
+            <div className="text-sm text-slate-500">No prior revisions.</div>
+          ) : (
+            <ul className="divide-y divide-slate-100">
+              {(revisions as any[]).map((r) => (
+                <li key={r.id} className="py-2 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium">v{r.version} — {r.title}</span>
+                    <span className="text-xs text-slate-500">
+                      {new Date(r.createdAt).toLocaleString()}
+                      {r.author && <> · {r.author.name}</>}
+                    </span>
+                  </div>
+                  <div className="text-xs text-slate-500 mt-0.5">
+                    priority: {r.priority} · {Array.isArray(r.steps) ? r.steps.length : 0} step(s) · tags: {(r.tags ?? []).join(", ") || "—"}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       <section className="card p-5">
         <h2 className="font-semibold mb-3">Discussion</h2>
@@ -361,24 +560,117 @@ function SortableStepRow({
         {index + 1}
       </div>
       <div className="flex-1 grid grid-cols-2 gap-3">
-        <textarea
-          className="input"
-          rows={2}
-          placeholder="Action"
-          value={step.action}
-          onChange={(e) => onChangeAction(e.target.value)}
-        />
-        <textarea
-          className="input"
-          rows={2}
-          placeholder="Expected result"
-          value={step.expected}
-          onChange={(e) => onChangeExpected(e.target.value)}
-        />
+        <RichEditor value={step.action} onChange={onChangeAction} placeholder="Action" minHeight={64} />
+        <RichEditor value={step.expected} onChange={onChangeExpected} placeholder="Expected result" minHeight={64} />
       </div>
       <button className="text-slate-400 hover:text-red-600 mt-1" onClick={onDelete}>
         <Trash2 size={16} />
       </button>
     </li>
+  );
+}
+
+type LinkedReq = { id: string; externalRef: string; title: string };
+
+function LinkedRequirements({
+  caseId,
+  projectId,
+  editing,
+  linked,
+}: {
+  caseId: string;
+  projectId: string;
+  editing: boolean;
+  linked: LinkedReq[];
+}) {
+  const { t } = useTranslation();
+  const qc = useQueryClient();
+  const [pickId, setPickId] = useState("");
+
+  const { data: allReqs = [] } = useQuery<LinkedReq[]>({
+    queryKey: ["requirements", projectId],
+    queryFn: async () => (await api.get(`/requirements`, { params: { projectId } })).data,
+    enabled: !!projectId && editing,
+  });
+
+  const link = useMutation({
+    mutationFn: async (reqId: string) => api.post(`/requirements/${reqId}/cases`, { caseId }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["case", caseId] });
+      qc.invalidateQueries({ queryKey: ["requirements", projectId] });
+      setPickId("");
+    },
+  });
+
+  const unlink = useMutation({
+    mutationFn: async (reqId: string) => api.delete(`/requirements/${reqId}/cases/${caseId}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["case", caseId] });
+      qc.invalidateQueries({ queryKey: ["requirements", projectId] });
+    },
+  });
+
+  const linkedIds = new Set(linked.map((r) => r.id));
+  const pickable = allReqs.filter((r) => !linkedIds.has(r.id));
+
+  if (!editing && linked.length === 0) return null;
+
+  return (
+    <section className="card p-5 space-y-3">
+      <div className="flex items-center justify-between">
+        <h2 className="font-semibold flex items-center gap-2">
+          <Link2 size={16} /> {t("requirements.linked_cases") /* reuse label */ ?? "Linked requirements"}
+        </h2>
+        <Link to={`/projects/${projectId}/requirements`} className="text-xs text-brand-600 hover:underline">
+          {t("requirements.title")}
+        </Link>
+      </div>
+      {linked.length === 0 ? (
+        <div className="text-sm text-slate-500">{t("requirements.empty")}</div>
+      ) : (
+        <ul className="flex flex-wrap gap-2">
+          {linked.map((r) => (
+            <li key={r.id} className="badge bg-brand-50 text-brand-700 flex items-center gap-1">
+              {/^https?:\/\//.test(r.externalRef) ? (
+                <a href={r.externalRef} target="_blank" rel="noreferrer" className="hover:underline inline-flex items-center gap-1 font-mono">
+                  {r.externalRef} <ExternalLink size={10} />
+                </a>
+              ) : (
+                <span className="font-mono">{r.externalRef}</span>
+              )}
+              <span className="text-slate-700">· {r.title}</span>
+              {editing && (
+                <button
+                  className="text-slate-400 hover:text-red-600"
+                  onClick={() => unlink.mutate(r.id)}
+                  aria-label="Unlink"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+      {editing && pickable.length > 0 && (
+        <div className="flex items-center gap-2">
+          <select className="input flex-1" value={pickId} onChange={(e) => setPickId(e.target.value)}>
+            <option value="">{t("requirements.pick_for_case")}</option>
+            {pickable.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.externalRef} — {r.title}
+              </option>
+            ))}
+          </select>
+          <button
+            className="btn-secondary"
+            disabled={!pickId || link.isPending}
+            onClick={() => pickId && link.mutate(pickId)}
+          >
+            <Plus size={14} /> {t("common.create")}
+          </button>
+        </div>
+      )}
+    </section>
   );
 }

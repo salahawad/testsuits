@@ -6,7 +6,7 @@ export type User = {
   id: string;
   email: string;
   name: string;
-  role: "MANAGER" | "TESTER";
+  role: "ADMIN" | "MANAGER" | "TESTER" | "VIEWER";
   company: Company;
 };
 
@@ -15,6 +15,7 @@ type AuthState = {
   token: string | null;
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, name: string, companyName: string) => Promise<void>;
+  setSession: (token: string, user: User) => void;
   logout: () => void;
 };
 
@@ -40,6 +41,11 @@ export const useAuth = create<AuthState>((set) => ({
     localStorage.setItem("token", data.token);
     localStorage.setItem("user", JSON.stringify(data.user));
     set({ user: data.user, token: data.token });
+  },
+  setSession: (token, user) => {
+    localStorage.setItem("token", token);
+    localStorage.setItem("user", JSON.stringify(user));
+    set({ user, token });
   },
   logout: () => {
     localStorage.removeItem("token");

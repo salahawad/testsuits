@@ -72,7 +72,10 @@
     "top_failing_cases": "Cas en échec (30j)",
     "no_failing_cases": "Aucun échec ces 30 derniers jours.",
     "failures_count": "{{count}} échecs",
-    "due": "échéance {{date}}"
+    "due": "échéance {{date}}",
+    "trend_30d": "Tendance (30 jours)",
+    "release_readiness": "Préparation de release",
+    "defect_aging": "Âge des défauts"
   },
   "projects": {
     "title": "Projets",
@@ -117,7 +120,13 @@
     "no_attachments": "Aucune pièce jointe.",
     "upload": "Téléverser",
     "discussion": "Discussion",
-    "delete_confirm": "Supprimer ce cas ?"
+    "delete_confirm": "Supprimer ce cas ?",
+    "shared_library": "Bibliothèque partagée",
+    "markdown_hint": "Markdown pris en charge : **gras**, *italique*, `code`, listes, [liens](url).",
+    "custom_fields": "Champs personnalisés",
+    "linked_shared_step": "Lié à une étape partagée",
+    "shared": "Partagée",
+    "no_shared_steps": "Aucune étape partagée dans ce projet."
   },
   "runs": {
     "title": "Exécutions",
@@ -148,7 +157,12 @@
     "comments": "Commentaires",
     "evidence": "Preuves",
     "no_evidence": "Aucune pièce jointe.",
-    "csv": "CSV"
+    "csv": "CSV",
+    "view_toggle": "Vue",
+    "view_list": "Liste",
+    "view_kanban": "Kanban",
+    "kanban_hint": "Glissez une carte d'une colonne à l'autre pour changer le statut.",
+    "kanban_empty_col": "Rien ici."
   },
   "milestones": {
     "title": "Jalons",
@@ -206,7 +220,55 @@
   },
   "project": {
     "settings_title": "Paramètres du projet",
-    "settings_subtitle": "Choisissez le projet Jira et l'épopée parente où seront créés les bugs."
+    "settings_subtitle": "Choisissez le projet Jira et l'épopée parente où seront créés les bugs.",
+    "tab_jira": "Jira",
+    "tab_custom_fields": "Champs personnalisés",
+    "tab_shared_steps": "Étapes partagées",
+    "tab_webhooks": "Webhooks"
+  },
+  "custom_fields": {
+    "title": "Champs personnalisés",
+    "subtitle": "Champs supplémentaires attachés à chaque cas de test du projet.",
+    "add": "Ajouter un champ",
+    "empty": "Aucun champ personnalisé. Ajoutez-en un pour collecter des données supplémentaires sur chaque cas.",
+    "label": "Libellé",
+    "type": "Type",
+    "required": "Obligatoire",
+    "options": "Options",
+    "options_placeholder": "Valeurs séparées par des virgules",
+    "type_text": "Texte",
+    "type_textarea": "Texte long",
+    "type_number": "Nombre",
+    "type_select": "Liste",
+    "type_checkbox": "Case à cocher"
+  },
+  "shared_steps": {
+    "title": "Étapes partagées",
+    "subtitle": "Une bibliothèque d'étapes réutilisables à insérer dans n'importe quel cas.",
+    "add": "Nouvelle étape partagée",
+    "name": "Nom",
+    "empty": "Aucune étape partagée. Créez-en une pour réutiliser la même action dans plusieurs cas.",
+    "delete_confirm": "Supprimer cette étape partagée ?"
+  },
+  "webhooks": {
+    "title": "Webhooks",
+    "subtitle": "Envoyez des événements à une URL externe quand quelque chose se passe dans ce projet.",
+    "add": "Nouveau webhook",
+    "url": "URL cible",
+    "secret_optional": "Clé de signature (optionnel)",
+    "secret_placeholder": "Laisser vide pour des livraisons non signées",
+    "secret_help": "Si définie, TestSuits signe le corps avec HMAC-SHA256 et l'envoie dans l'en-tête x-testsuits-signature.",
+    "events": "Événements",
+    "empty": "Aucun webhook configuré.",
+    "active": "Actif",
+    "inactive": "En pause",
+    "enable": "Activer",
+    "disable": "Mettre en pause",
+    "signed": "Signé",
+    "test": "Envoyer un test",
+    "delete_confirm": "Supprimer ce webhook ?",
+    "recent_deliveries": "Dernières livraisons",
+    "pick_event": "Sélectionnez au moins un événement."
   },
   "comments": {
     "placeholder": "Écrire un commentaire…",
@@ -225,6 +287,46 @@
   "company": {
     "settings_title": "Paramètres de l'entreprise",
     "settings_subtitle": "La configuration Jira et les modèles s'appliquent à tous les projets de cette entreprise."
+  },
+  "sso": {
+    "title": "SSO & Provisioning",
+    "subtitle": "Configurez l'authentification unique SAML et le provisioning SCIM pour cette entreprise.",
+    "admin_only": "Rôle Admin requis pour voir les paramètres SSO.",
+    "saml_config": "Configuration SAML",
+    "enabled": "Activé",
+    "config_hint": "Copiez les métadonnées IdP depuis votre fournisseur d'identité. Le certificat x509 sert à vérifier les réponses SAML.",
+    "entity_id": "Entity ID (SP)",
+    "sso_url": "URL SSO de l'IdP",
+    "x509_cert": "Certificat x509 de l'IdP (PEM)",
+    "cert_stored": "(enregistré — laisser vide pour conserver)",
+    "email_attribute": "Attribut e-mail",
+    "name_attribute": "Attribut nom",
+    "default_role": "Rôle par défaut pour les nouveaux utilisateurs",
+    "scim_tokens": "Jetons SCIM",
+    "scim_hint": "Donnez à votre IdP un jeton Bearer pour appeler /api/scim/v2. Les jetons ne sont affichés qu'à la création.",
+    "scim_token_name_placeholder": "ex. Okta production",
+    "issue_token": "Émettre un jeton",
+    "token_shown_once": "Copiez ce jeton maintenant — il ne sera plus affiché.",
+    "no_scim_tokens": "Aucun jeton SCIM émis.",
+    "created": "Créé",
+    "last_used": "Dernière utilisation",
+    "revoke_confirm": "Révoquer ce jeton SCIM ?"
+  },
+  "audit": {
+    "title": "Journal d'audit",
+    "subtitle": "Flux d'activité de l'entreprise pour les revues de conformité.",
+    "download_csv": "Télécharger CSV",
+    "action_filter": "Action",
+    "user_filter": "Utilisateur",
+    "from": "Du",
+    "to": "Au",
+    "empty": "Aucune entrée correspondant aux filtres.",
+    "when": "Quand",
+    "user": "Utilisateur",
+    "action": "Action",
+    "project": "Projet",
+    "entity": "Entité",
+    "rows_count": "{{count}} lignes"
   },
   "test_level": {
     "label": "Niveau de test",
@@ -272,6 +374,10 @@
     "execution_assigned": "a attribué une exécution",
     "comment_added": "a commenté",
     "jira_linked": "a lié un ticket Jira",
-    "attachment_added": "a ajouté une pièce jointe"
+    "attachment_added": "a ajouté une pièce jointe",
+    "shared_step_created": "a créé une étape partagée",
+    "shared_step_updated": "a mis à jour une étape partagée",
+    "webhook_configured": "a configuré un webhook",
+    "custom_fields_updated": "a mis à jour les champs personnalisés"
   }
 }

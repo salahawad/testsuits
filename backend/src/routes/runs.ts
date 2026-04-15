@@ -5,6 +5,7 @@ import { AuthedRequest, requireManager } from "../middleware/auth";
 import { httpError } from "../middleware/error";
 import { caseWhere, projectWhere, runWhere, suiteWhere } from "../middleware/scope";
 import { logActivity } from "../lib/activity";
+import { dispatchWebhook } from "../lib/webhooks";
 
 export const runsRouter = Router();
 
@@ -106,6 +107,16 @@ runsRouter.post("/", requireManager, async (req: AuthedRequest, res, next) => {
       entityId: run.id,
       payload: { name: run.name, caseCount: caseIds.size },
     });
+    dispatchWebhook({
+      projectId: run.projectId,
+      event: "run.created",
+      payload: {
+        runId: run.id,
+        name: run.name,
+        caseCount: caseIds.size,
+        createdBy: req.user!.id,
+      },
+    });
 
     res.status(201).json(run);
   } catch (e) {
@@ -179,6 +190,13 @@ runsRouter.patch("/:id", requireManager, async (req: AuthedRequest, res, next) =
         entityId: run.id,
         payload: { status: data.status },
       });
+      if (data.status === "COMPLETED") {
+        dispatchWebhook({
+          projectId: run.projectId,
+          event: "run.completed",
+          payload: { runId: run.id, name: run.name, completedBy: req.user!.id },
+        });
+      }
     }
     res.json(run);
   } catch (e) {

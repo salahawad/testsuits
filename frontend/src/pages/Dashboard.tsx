@@ -6,15 +6,48 @@ import {
   Bug,
   CalendarClock,
   CheckCircle2,
+  Clock,
   FileText,
   FolderKanban,
   ListChecks,
   Play,
+  Rocket,
   Target,
+  TrendingUp,
 } from "lucide-react";
 import { api } from "../lib/api";
 import { priorityColors, runStatusColors } from "../lib/status";
 import { logger } from "../lib/logger";
+
+type TrendPoint = { day: string; total: number; passed: number; failed: number; passRate: number | null };
+
+function TrendChart({ trend }: { trend: TrendPoint[] }) {
+  const W = 600;
+  const H = 110;
+  const pad = { t: 8, r: 4, b: 18, l: 24 };
+  const maxTotal = Math.max(1, ...trend.map((p) => p.total));
+  const xStep = (W - pad.l - pad.r) / Math.max(1, trend.length - 1);
+  const y = (v: number, max: number) => H - pad.b - (v / max) * (H - pad.t - pad.b);
+  const execPath = trend.map((p, i) => `${i === 0 ? "M" : "L"} ${pad.l + i * xStep} ${y(p.total, maxTotal)}`).join(" ");
+  const rateTrend = trend.filter((p) => p.passRate != null);
+  const ratePath = rateTrend.length > 1
+    ? rateTrend.map((p, i) => {
+        const idx = trend.indexOf(p);
+        return `${i === 0 ? "M" : "L"} ${pad.l + idx * xStep} ${y(p.passRate!, 100)}`;
+      }).join(" ")
+    : "";
+  const firstDay = trend[0]?.day;
+  const lastDay = trend[trend.length - 1]?.day;
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" preserveAspectRatio="none">
+      <line x1={pad.l} x2={W - pad.r} y1={H - pad.b} y2={H - pad.b} stroke="#e2e8f0" />
+      {execPath && <path d={execPath} fill="none" stroke="#8b5cf6" strokeWidth="1.5" />}
+      {ratePath && <path d={ratePath} fill="none" stroke="#10b981" strokeWidth="1.5" strokeDasharray="3,3" />}
+      <text x={pad.l} y={H - 4} fontSize="9" fill="#94a3b8">{firstDay}</text>
+      <text x={W - pad.r} y={H - 4} fontSize="9" fill="#94a3b8" textAnchor="end">{lastDay}</text>
+    </svg>
+  );
+}
 
 type StatusKey = "PENDING" | "PASSED" | "FAILED" | "BLOCKED" | "SKIPPED";
 
@@ -130,6 +163,97 @@ export function Dashboard() {
             </div>
           </>
         )}
+      </div>
+
+      {Array.isArray(data.trend) && data.trend.some((d: any) => d.total > 0) && (
+        <div className="card p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold flex items-center gap-2">
+              <TrendingUp size={16} className="text-violet-600" />
+              {t("dashboard.trend_30d")}
+            </h2>
+            <div className="text-xs text-slate-500 flex items-center gap-3">
+              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-violet-500" /> Executions</span>
+              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Pass rate</span>
+            </div>
+          </div>
+          <TrendChart trend={data.trend} />
+        </div>
+      )}
+
+      <div className="grid md:grid-cols-2 gap-6">
+        <div className="card p-5">
+          <h2 className="font-semibold mb-4 flex items-center gap-2">
+            <Rocket size={16} className="text-indigo-600" />
+            {t("dashboard.release_readiness")}
+          </h2>
+          {(data.releaseReadiness ?? []).length === 0 ? (
+            <div className="text-sm text-slate-500">{t("dashboard.no_upcoming_milestones")}</div>
+          ) : (
+            <ul className="space-y-3">
+              {data.releaseReadiness.map((m: any) => {
+                const ready = m.executedPct >= 90 && m.passRateOfExecuted >= 90 && m.blockerOpen === 0;
+                const tone = ready ? "emerald" : m.blockerOpen > 0 ? "red" : "amber";
+                return (
+                  <li key={m.id}>
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <div className="font-medium truncate">{m.name}</div>
+                      <span className={`badge ${tone === "emerald" ? "bg-emerald-100 text-emerald-700" : tone === "red" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
+                        {ready ? "READY" : m.blockerOpen > 0 ? `${m.blockerOpen} BLOCKERS` : "IN PROGRESS"}
+                      </span>
+                    </div>
+                    <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden flex">
+                      {m.total > 0 && <div className="bg-emerald-500" style={{ width: `${(m.passed / m.total) * 100}%` }} />}
+                      {m.total > 0 && <div className="bg-red-500" style={{ width: `${(m.failed / m.total) * 100}%` }} />}
+                      {m.total > 0 && <div className="bg-amber-500" style={{ width: `${(m.blocked / m.total) * 100}%` }} />}
+                    </div>
+                    <div className="text-xs text-slate-500 mt-1 flex items-center gap-3 flex-wrap">
+                      <span>{m.project.name}</span>
+                      <span>{m.executedPct}% executed</span>
+                      <span>{m.passRateOfExecuted}% pass</span>
+                      {m.dueDate && <span>due {new Date(m.dueDate).toLocaleDateString()}</span>}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
+
+        <div className="card p-5">
+          <h2 className="font-semibold mb-4 flex items-center gap-2">
+            <Clock size={16} className="text-red-600" />
+            {t("dashboard.defect_aging")}
+          </h2>
+          {(data.defectAging?.totalFailed ?? 0) === 0 ? (
+            <div className="text-sm text-slate-500">{t("dashboard.no_failing_cases")}</div>
+          ) : (
+            <div className="space-y-2">
+              {(["0-7d", "8-30d", "31-90d", "90d+"] as const).map((bucket) => {
+                const count = data.defectAging.buckets[bucket] ?? 0;
+                const pct = data.defectAging.totalFailed > 0 ? Math.round((count / data.defectAging.totalFailed) * 100) : 0;
+                const tone =
+                  bucket === "0-7d" ? "bg-emerald-500" :
+                  bucket === "8-30d" ? "bg-amber-500" :
+                  bucket === "31-90d" ? "bg-orange-500" : "bg-red-600";
+                return (
+                  <div key={bucket} className="flex items-center gap-3">
+                    <div className="text-xs font-semibold uppercase text-slate-600 w-16">{bucket}</div>
+                    <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
+                      <div className={`h-full ${tone}`} style={{ width: `${pct}%` }} />
+                    </div>
+                    <div className="text-sm font-medium w-16 text-right">
+                      {count} <span className="text-xs text-slate-400">· {pct}%</span>
+                    </div>
+                  </div>
+                );
+              })}
+              <div className="text-xs text-slate-500 pt-2">
+                {data.defectAging.totalFailed} total failing executions (local timestamp)
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">

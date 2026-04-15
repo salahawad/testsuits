@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db";
-import { AuthedRequest, requireManager } from "../middleware/auth";
+import { AuthedRequest, requireManager, requireWrite } from "../middleware/auth";
 import { httpError } from "../middleware/error";
 import {
   createJiraBugForExecution,
@@ -11,6 +11,7 @@ import {
 } from "../lib/jira";
 import { executionWhere, projectWhere } from "../middleware/scope";
 import { logger } from "../lib/logger";
+import { dispatchWebhook } from "../lib/webhooks";
 
 export const jiraRouter = Router();
 
@@ -223,10 +224,28 @@ async function assertAccessToExecution(req: AuthedRequest, id: string) {
   if (!allowed) throw httpError(404, "Execution not found");
 }
 
-jiraRouter.post("/executions/:id/create-bug", async (req: AuthedRequest, res, next) => {
+jiraRouter.post("/executions/:id/create-bug", requireWrite, async (req: AuthedRequest, res, next) => {
   try {
     await assertAccessToExecution(req, req.params.id);
     const updated = await createJiraBugForExecution(req.params.id);
+    const exec = await prisma.testExecution.findUnique({
+      where: { id: req.params.id },
+      select: { runId: true, caseId: true, run: { select: { projectId: true } } },
+    });
+    if (exec) {
+      dispatchWebhook({
+        projectId: exec.run.projectId,
+        event: "jira.bug_created",
+        payload: {
+          executionId: req.params.id,
+          runId: exec.runId,
+          caseId: exec.caseId,
+          jiraIssueKey: updated.jiraIssueKey,
+          jiraIssueUrl: updated.jiraIssueUrl,
+          createdBy: req.user!.id,
+        },
+      });
+    }
     res.json({ jiraIssueKey: updated.jiraIssueKey, jiraIssueUrl: updated.jiraIssueUrl });
   } catch (e) {
     next(e);
@@ -235,7 +254,7 @@ jiraRouter.post("/executions/:id/create-bug", async (req: AuthedRequest, res, ne
 
 const linkSchema = z.object({ jiraIssueKey: z.string().min(1) });
 
-jiraRouter.post("/executions/:id/link", async (req: AuthedRequest, res, next) => {
+jiraRouter.post("/executions/:id/link", requireWrite, async (req: AuthedRequest, res, next) => {
   try {
     await assertAccessToExecution(req, req.params.id);
     const { jiraIssueKey } = linkSchema.parse(req.body);
@@ -253,7 +272,7 @@ jiraRouter.post("/executions/:id/link", async (req: AuthedRequest, res, next) =>
   }
 });
 
-jiraRouter.post("/executions/:id/unlink", async (req: AuthedRequest, res, next) => {
+jiraRouter.post("/executions/:id/unlink", requireWrite, async (req: AuthedRequest, res, next) => {
   try {
     await assertAccessToExecution(req, req.params.id);
     const updated = await prisma.testExecution.update({

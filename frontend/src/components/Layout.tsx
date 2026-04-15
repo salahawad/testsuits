@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import { Link, NavLink, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, FolderKanban, PlayCircle, Grid3x3, Users,
-  Building2, LogOut, ChevronLeft, ChevronRight, Globe,
+  Building2, LogOut, ChevronLeft, ChevronRight, Globe, KeyRound,
+  ShieldCheck, FileSearch,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../lib/auth";
@@ -22,7 +23,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
     localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0");
   }, [collapsed]);
 
-  const isManager = user?.role === "MANAGER";
+  const isManager = user?.role === "MANAGER" || user?.role === "ADMIN";
+  const isAdmin = user?.role === "ADMIN";
 
   const nav = [
     { to: "/", icon: LayoutDashboard, label: t("nav.dashboard") },
@@ -31,8 +33,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
     { to: "/matrix", icon: Grid3x3, label: t("matrix.title") },
   ];
   const adminNav = [
-    { to: "/team", icon: Users, label: t("team.title") },
-    { to: "/company", icon: Building2, label: t("company.settings_title") },
+    ...(isManager ? [{ to: "/team", icon: Users, label: t("team.title") }] : []),
+    ...(isManager ? [{ to: "/audit", icon: FileSearch, label: t("audit.title") }] : []),
+    { to: "/tokens", icon: KeyRound, label: t("tokens.title") },
+    ...(isManager ? [{ to: "/company", icon: Building2, label: t("company.settings_title") }] : []),
+    ...(isAdmin ? [{ to: "/sso", icon: ShieldCheck, label: t("sso.title") }] : []),
   ];
 
   function changeLang(code: string) {

@@ -1,0 +1,78 @@
+name: Bug report
+description: Something is broken or behaving unexpectedly.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file a bug report. Please fill in every section — a reproducible report gets fixed much faster than a vague one.
+
+        **Security-sensitive reports** should go through [SECURITY.md](../SECURITY.md) instead.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: One or two sentences.
+      placeholder: "Creating a Jira bug from a failed execution returns 500 when the project has no parent epic set."
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Include seeded account, curl commands, or screenshots.
+      placeholder: |
+        1. Log in as `manager@acme.local`.
+        2. Open run `Auth regression - iOS/Staging`.
+        3. Mark a case FAILED and click "Create Jira bug".
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: Paste the API response, console error, or screenshot.
+    validations:
+      required: true
+  - type: input
+    id: commit
+    attributes:
+      label: Commit SHA
+      description: Output of `git rev-parse --short HEAD`.
+      placeholder: "abc1234"
+    validations:
+      required: true
+  - type: dropdown
+    id: browser
+    attributes:
+      label: Browser (if UI bug)
+      options:
+        - N/A
+        - Chrome
+        - Firefox
+        - Safari
+        - Edge
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: "`docker compose logs --tail 200 api` or the pino line for the failing request ID from the `x-request-id` response header."
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Confirmations
+      options:
+        - label: I searched existing issues and didn't find a duplicate.
+          required: true
+        - label: This is not a security-sensitive report.
+          required: true
