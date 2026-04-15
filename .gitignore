@@ -9,6 +9,7 @@ coverage/
 .vite/
 postgres-data/
 .claude/
+*.tsbuildinfo
 
 # Local-only seed extensions (per-developer fixtures — not shipped publicly)
 backend/prisma/seed.hapster.ts
