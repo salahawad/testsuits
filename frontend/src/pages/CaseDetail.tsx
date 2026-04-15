@@ -365,7 +365,7 @@ export function CaseDetail() {
           <ol className="space-y-3">
             {steps.map((s, i) => (
               <li key={i} className="flex gap-3 items-start">
-                <div className="w-7 h-7 rounded-full bg-brand-50 text-brand-700 text-sm font-semibold flex items-center justify-center flex-shrink-0">{i + 1}</div>
+                <div className="w-6 h-6 mt-0.5 rounded-full bg-brand-50 text-brand-700 text-xs font-semibold leading-none flex items-center justify-center flex-shrink-0">{i + 1}</div>
                 <div className="flex-1 grid grid-cols-2 gap-3">
                   <div>
                     <div className="text-xs text-slate-500 mb-0.5 flex items-center gap-1">
@@ -585,7 +585,7 @@ function SortableStepRow({
       >
         <GripVertical size={16} />
       </button>
-      <div className="w-7 h-7 rounded-full bg-brand-50 text-brand-700 text-sm font-semibold flex items-center justify-center flex-shrink-0">
+      <div className="w-6 h-6 mt-0.5 rounded-full bg-brand-50 text-brand-700 text-xs font-semibold leading-none flex items-center justify-center flex-shrink-0">
         {index + 1}
       </div>
       <div className="flex-1 grid grid-cols-2 gap-3">
