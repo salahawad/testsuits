@@ -11,18 +11,18 @@ import { logActivity } from "../lib/activity";
 export const projectsRouter = Router();
 
 const upsertSchema = z.object({
-  key: z.string().min(1).max(16).regex(/^[A-Z0-9_-]+$/),
-  name: z.string().min(1),
+  key: z.string().trim().min(1).max(16).regex(/^[A-Z0-9_-]+$/),
+  name: z.string().trim().min(1, "Project name is required"),
   description: z.string().optional().nullable(),
 });
 
 const customFieldTypes = ["text", "textarea", "number", "select", "checkbox"] as const;
 const customFieldSchema = z.object({
   id: z.string().min(1).optional(),
-  label: z.string().min(1).max(80),
+  label: z.string().trim().min(1, "Field label is required").max(80),
   type: z.enum(customFieldTypes),
   required: z.boolean().optional(),
-  options: z.array(z.string().min(1)).optional(),
+  options: z.array(z.string().trim().min(1)).optional(),
 });
 export type CustomField = {
   id: string;

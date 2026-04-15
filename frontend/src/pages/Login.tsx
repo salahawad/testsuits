@@ -1,8 +1,10 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { useAuth } from "../lib/auth";
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
+import { LOGIN_FLASH_KEY } from "../lib/api";
 import { logger } from "../lib/logger";
 
 export function Login() {
@@ -16,6 +18,14 @@ export function Login() {
   const [companyName, setCompanyName] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const flash = localStorage.getItem(LOGIN_FLASH_KEY);
+    if (flash) {
+      localStorage.removeItem(LOGIN_FLASH_KEY);
+      toast.warning(flash);
+    }
+  }, []);
 
   if (user) return <Navigate to="/" replace />;
 

@@ -1,6 +1,9 @@
 import { Navigate, Route, Routes } from "react-router-dom";
+import { Toaster } from "sonner";
 import { useAuth } from "./lib/auth";
 import { Layout } from "./components/Layout";
+import { ErrorBoundary } from "./components/ErrorBoundary";
+import { NotFound } from "./pages/NotFound";
 import { Login } from "./pages/Login";
 import { Dashboard } from "./pages/Dashboard";
 import { Projects } from "./pages/Projects";
@@ -31,11 +34,17 @@ function Protected({ children }: { children: React.ReactNode }) {
     return <Navigate to="/login" replace />;
   }
   if (!user) return <Navigate to="/login" replace />;
-  return <Layout>{children}</Layout>;
+  return (
+    <Layout>
+      <ErrorBoundary>{children}</ErrorBoundary>
+    </Layout>
+  );
 }
 
 export function App() {
   return (
+    <>
+    <Toaster position="top-right" richColors closeButton />
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -57,7 +66,8 @@ export function App() {
       <Route path="/company" element={<Protected><CompanySettings /></Protected>} />
       <Route path="/sso" element={<Protected><SsoSettings /></Protected>} />
       <Route path="/audit" element={<Protected><Audit /></Protected>} />
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<Protected><NotFound /></Protected>} />
     </Routes>
+    </>
   );
 }

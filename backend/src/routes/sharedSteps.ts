@@ -10,9 +10,9 @@ export const sharedStepsRouter = Router();
 
 const upsertSchema = z.object({
   projectId: z.string(),
-  name: z.string().min(1).max(120),
-  action: z.string().min(1),
-  expected: z.string().min(1),
+  name: z.string().trim().min(1, "Name is required").max(120),
+  action: z.string().trim().min(1, "Action is required"),
+  expected: z.string().trim().min(1, "Expected result is required"),
 });
 
 sharedStepsRouter.get("/", async (req: AuthedRequest, res, next) => {

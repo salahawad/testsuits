@@ -20,12 +20,14 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
+import { toast } from "sonner";
 import { api } from "../lib/api";
 import { priorityColors } from "../lib/status";
 import { Comments } from "../components/Comments";
 import { Markdown } from "../lib/markdown";
 import { RichEditor } from "../components/RichEditor";
 import { logger } from "../lib/logger";
+import { apiErrorMessage } from "../lib/apiError";
 
 type Step = { action: string; expected: string; sharedStepId?: string | null };
 type CustomField = {
@@ -101,8 +103,35 @@ export function CaseDetail() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["case", id] });
       setEditing(false);
+      toast.success(t("cases.saved"));
+    },
+    onError: (e) => {
+      const msg = apiErrorMessage(e, t("common.something_went_wrong"));
+      toast.error(msg);
+      logger.error("case save failed", { caseId: id, status: (e as any)?.response?.status, msg });
     },
   });
+
+  function validateDraft(): string | null {
+    if (!draft) return null;
+    if (!draft.title?.trim()) return t("cases.validation.title_required");
+    const steps: Step[] = draft.steps ?? [];
+    for (let i = 0; i < steps.length; i += 1) {
+      const s = steps[i];
+      if (!s.action?.trim()) return t("cases.validation.step_action_empty", { step: i + 1 });
+      if (!s.expected?.trim()) return t("cases.validation.step_expected_empty", { step: i + 1 });
+    }
+    return null;
+  }
+
+  function onSaveClick() {
+    const err = validateDraft();
+    if (err) {
+      toast.error(err);
+      return;
+    }
+    save.mutate();
+  }
 
   const clone = useMutation({
     mutationFn: async () => (await api.post(`/cases/${id}/clone`, {})).data,
@@ -451,7 +480,7 @@ export function CaseDetail() {
       {editing && (
         <div className="flex gap-2 justify-end">
           <button className="btn-secondary" onClick={() => setEditing(false)}>Cancel</button>
-          <button className="btn-primary" onClick={() => save.mutate()} disabled={save.isPending}>Save</button>
+          <button className="btn-primary" onClick={onSaveClick} disabled={save.isPending}>{t("common.save")}</button>
         </div>
       )}
 

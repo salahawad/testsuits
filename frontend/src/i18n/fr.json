@@ -28,6 +28,19 @@
     "please_wait": "Veuillez patienter…",
     "something_went_wrong": "Une erreur est survenue"
   },
+  "notfound": {
+    "title": "Page introuvable",
+    "body": "Nous n'avons pas trouvé la page demandée. Elle a peut-être été déplacée, renommée, ou vous n'y avez plus accès.",
+    "back": "Retour",
+    "go_home": "Accueil"
+  },
+  "errors": {
+    "network": "Impossible de joindre le serveur. Vérifiez votre connexion et réessayez.",
+    "server": "Erreur serveur. Nous l'avons enregistrée — réessayez dans un instant.",
+    "session_revoked": "Votre session a été révoquée. Veuillez vous reconnecter.",
+    "session_expired": "Votre session a expiré. Veuillez vous reconnecter.",
+    "forbidden": "Vous n'avez pas la permission d'effectuer cette action."
+  },
   "nav": {
     "dashboard": "Tableau de bord",
     "projects": "Projets",
@@ -379,5 +392,17 @@
     "shared_step_updated": "a mis à jour une étape partagée",
     "webhook_configured": "a configuré un webhook",
     "custom_fields_updated": "a mis à jour les champs personnalisés"
+  },
+  "editor": {
+    "bold": "Gras",
+    "italic": "Italique",
+    "code": "Code en ligne",
+    "bullet_list": "Liste à puces",
+    "numbered_list": "Liste numérotée",
+    "link": "Lien",
+    "link_prompt": "Collez une URL (http, https, mailto ou tel)",
+    "link_rejected": "Cette URL n'est pas autorisée. Seuls les liens http, https, mailto et tel sont acceptés.",
+    "undo": "Annuler",
+    "redo": "Rétablir"
   }
 }

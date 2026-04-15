@@ -3,11 +3,13 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
 import { Plus, List, LayoutGrid } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { api } from "../lib/api";
 import { runStatusColors } from "../lib/status";
 import { CONNECTIVITY, PLATFORMS, TEST_LEVELS } from "../lib/enums";
 import { logger } from "../lib/logger";
 import { useAuth } from "../lib/auth";
+import { apiErrorMessage } from "../lib/apiError";
 
 const KANBAN_COLUMNS = ["DRAFT", "IN_PROGRESS", "COMPLETED", "ARCHIVED"] as const;
 
@@ -97,11 +99,27 @@ export function Runs() {
       setMilestoneId("");
       setAssigneeId("");
     },
-    onError: (e: any) => logger.error("run create failed", { status: e?.response?.status }),
+    onError: (e: any) => {
+      const msg = apiErrorMessage(e, t("common.something_went_wrong"));
+      toast.error(msg);
+      logger.error("run create failed", { status: e?.response?.status, msg });
+    },
   });
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!name.trim()) {
+      toast.error(t("runs.validation.name_required"));
+      return;
+    }
+    if (!projectId) {
+      toast.error(t("runs.validation.project_required"));
+      return;
+    }
+    if (selectedSuiteIds.length === 0) {
+      toast.error(t("runs.validation.suite_required"));
+      return;
+    }
     create.mutate();
   }
 
@@ -123,7 +141,11 @@ export function Runs() {
       qc.invalidateQueries({ queryKey: ["runs"] });
       logger.info("run status changed via kanban", { runId: vars.runId, status: vars.status });
     },
-    onError: (e: any) => logger.error("kanban status change failed", { status: e?.response?.status }),
+    onError: (e: any) => {
+      const msg = apiErrorMessage(e, t("common.something_went_wrong"));
+      toast.error(msg);
+      logger.error("kanban status change failed", { status: e?.response?.status, msg });
+    },
   });
 
   function onDragStart(e: React.DragEvent<HTMLAnchorElement>, runId: string) {

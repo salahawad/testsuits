@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Plus, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { api } from "../lib/api";
 import { logger } from "../lib/logger";
+import { apiErrorMessage } from "../lib/apiError";
 
 type FieldType = "text" | "textarea" | "number" | "select" | "checkbox";
 type CustomField = {
@@ -36,10 +38,22 @@ export function CustomFieldsEditor({ projectId, canEdit }: { projectId: string; 
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["custom-fields", projectId] });
       setErr(null);
+      toast.success(t("custom_fields.saved"));
       logger.info("custom fields saved", { projectId, count: draft.length });
     },
-    onError: (e: any) => setErr(e.response?.data?.error ?? "Save failed"),
+    onError: (e: any) => {
+      const msg = apiErrorMessage(e, t("common.something_went_wrong"));
+      setErr(msg);
+      toast.error(msg);
+    },
   });
+
+  // Blocks Save when any row is half-finished. Same checks the backend would
+  // run — but surfacing them here turns a 400 + toast into a disabled button
+  // the user can reason about before clicking.
+  const draftInvalid =
+    draft.some((f) => !f.label.trim()) ||
+    draft.some((f) => f.type === "select" && (!f.options || f.options.length === 0));
 
   function update(i: number, patch: Partial<CustomField>) {
     setDraft(draft.map((f, idx) => (idx === i ? { ...f, ...patch } : f)));
@@ -109,7 +123,7 @@ export function CustomFieldsEditor({ projectId, canEdit }: { projectId: string; 
       {err && <div className="text-sm text-red-600">{err}</div>}
       {canEdit && (
         <div className="flex justify-end">
-          <button className="btn-primary" onClick={() => save.mutate()} disabled={save.isPending}>
+          <button className="btn-primary" onClick={() => save.mutate()} disabled={save.isPending || draftInvalid} title={draftInvalid ? t("custom_fields.validation.incomplete") : undefined}>
             {t("common.save")}
           </button>
         </div>

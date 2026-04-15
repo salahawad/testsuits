@@ -15,7 +15,7 @@ const CONNECTIVITY = ["ONLINE", "OFFLINE"] as const;
 const createSchema = z.object({
   projectId: z.string(),
   milestoneId: z.string().optional().nullable(),
-  name: z.string().min(1),
+  name: z.string().trim().min(1, "Run name is required"),
   description: z.string().optional().nullable(),
   environment: z.string().optional().nullable(),
   platform: z.enum(PLATFORMS).optional().nullable(),
@@ -162,7 +162,7 @@ runsRouter.patch("/:id", requireManager, async (req: AuthedRequest, res, next) =
     if (!owned) throw httpError(404, "Run not found");
     const data = z
       .object({
-        name: z.string().optional(),
+        name: z.string().trim().min(1, "Run name cannot be empty").optional(),
         description: z.string().optional().nullable(),
         environment: z.string().optional().nullable(),
         platform: z.enum(PLATFORMS).optional().nullable(),

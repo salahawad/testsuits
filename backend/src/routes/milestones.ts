@@ -9,7 +9,7 @@ export const milestonesRouter = Router();
 
 const upsert = z.object({
   projectId: z.string().optional(),
-  name: z.string().min(1),
+  name: z.string().trim().min(1, "Milestone name is required"),
   description: z.string().optional().nullable(),
   status: z.enum(["PLANNED", "ACTIVE", "RELEASED", "CANCELLED"]).optional(),
   dueDate: z.string().datetime().optional().nullable(),

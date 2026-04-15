@@ -28,6 +28,19 @@
     "please_wait": "Please wait…",
     "something_went_wrong": "Something went wrong"
   },
+  "notfound": {
+    "title": "Page not found",
+    "body": "We couldn't find the page you were looking for. It might have been moved, renamed, or you might not have access to it anymore.",
+    "back": "Go back",
+    "go_home": "Go home"
+  },
+  "errors": {
+    "network": "Can't reach the server. Check your connection and try again.",
+    "server": "The server hit an error. We've logged it — try again shortly.",
+    "session_revoked": "Your session has been revoked. Please sign in again.",
+    "session_expired": "Your session expired. Please sign in again.",
+    "forbidden": "You don't have permission to do that."
+  },
   "nav": {
     "dashboard": "Dashboard",
     "projects": "Projects",
@@ -126,7 +139,13 @@
     "custom_fields": "Custom fields",
     "linked_shared_step": "Linked to a shared step",
     "shared": "Shared",
-    "no_shared_steps": "No shared steps in this project yet."
+    "no_shared_steps": "No shared steps in this project yet.",
+    "saved": "Case saved.",
+    "validation": {
+      "title_required": "Title is required.",
+      "step_action_empty": "Step {{step}}: action cannot be empty.",
+      "step_expected_empty": "Step {{step}}: expected result cannot be empty."
+    }
   },
   "runs": {
     "title": "Test Runs",
@@ -162,7 +181,12 @@
     "view_list": "List",
     "view_kanban": "Kanban",
     "kanban_hint": "Drag a card across columns to change a run's status.",
-    "kanban_empty_col": "Nothing here."
+    "kanban_empty_col": "Nothing here.",
+    "validation": {
+      "name_required": "Run name is required.",
+      "project_required": "Pick a project first.",
+      "suite_required": "Select at least one suite."
+    }
   },
   "milestones": {
     "title": "Milestones",
@@ -240,7 +264,11 @@
     "type_textarea": "Long text",
     "type_number": "Number",
     "type_select": "Select",
-    "type_checkbox": "Checkbox"
+    "type_checkbox": "Checkbox",
+    "saved": "Custom fields saved.",
+    "validation": {
+      "incomplete": "Fix empty labels and select fields missing options before saving."
+    }
   },
   "shared_steps": {
     "title": "Shared steps",
@@ -248,7 +276,13 @@
     "add": "New shared step",
     "name": "Name",
     "empty": "No shared steps yet. Create one to reuse the same action across multiple cases.",
-    "delete_confirm": "Delete this shared step?"
+    "delete_confirm": "Delete this shared step?",
+    "created": "Shared step created.",
+    "validation": {
+      "name_required": "Name is required.",
+      "action_required": "Action is required.",
+      "expected_required": "Expected result is required."
+    }
   },
   "webhooks": {
     "title": "Webhooks",
@@ -436,5 +470,17 @@
     "shared_step_updated": "updated a shared step",
     "webhook_configured": "configured a webhook",
     "custom_fields_updated": "updated custom fields"
+  },
+  "editor": {
+    "bold": "Bold",
+    "italic": "Italic",
+    "code": "Inline code",
+    "bullet_list": "Bullet list",
+    "numbered_list": "Numbered list",
+    "link": "Link",
+    "link_prompt": "Paste a URL (http, https, mailto or tel)",
+    "link_rejected": "That URL is not allowed. Only http, https, mailto and tel links are accepted.",
+    "undo": "Undo",
+    "redo": "Redo"
   }
 }

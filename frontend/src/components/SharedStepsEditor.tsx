@@ -2,10 +2,12 @@ import { FormEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Plus, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { api } from "../lib/api";
 import { Markdown } from "../lib/markdown";
 import { RichEditor } from "./RichEditor";
 import { logger } from "../lib/logger";
+import { apiErrorMessage } from "../lib/apiError";
 
 type SharedStep = {
   id: string;
@@ -38,17 +40,35 @@ export function SharedStepsEditor({ projectId, canEdit }: { projectId: string; c
       setName("");
       setAction("");
       setExpected("");
+      toast.success(t("shared_steps.created"));
       logger.info("shared step created", { projectId });
+    },
+    onError: (e: any) => {
+      const msg = apiErrorMessage(e, t("common.something_went_wrong"));
+      toast.error(msg);
     },
   });
 
   const remove = useMutation({
     mutationFn: async (id: string) => api.delete(`/shared-steps/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["shared-steps", projectId] }),
+    onError: (e: any) => toast.error(apiErrorMessage(e, t("common.something_went_wrong"))),
   });
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (!name.trim()) {
+      toast.error(t("shared_steps.validation.name_required"));
+      return;
+    }
+    if (!action.trim()) {
+      toast.error(t("shared_steps.validation.action_required"));
+      return;
+    }
+    if (!expected.trim()) {
+      toast.error(t("shared_steps.validation.expected_required"));
+      return;
+    }
     create.mutate();
   }
 

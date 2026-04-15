@@ -9,8 +9,8 @@ import { logActivity } from "../lib/activity";
 export const casesRouter = Router();
 
 const stepSchema = z.object({
-  action: z.string().min(1),
-  expected: z.string().min(1),
+  action: z.string().trim().min(1, "Step action cannot be empty"),
+  expected: z.string().trim().min(1, "Step expected result cannot be empty"),
   sharedStepId: z.string().optional().nullable(),
 });
 
@@ -21,7 +21,7 @@ const customFieldValueSchema = z.record(
 
 const upsertSchema = z.object({
   suiteId: z.string(),
-  title: z.string().min(1),
+  title: z.string().trim().min(1, "Title is required"),
   preconditions: z.string().optional().nullable(),
   priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional(),
   testLevel: z.enum(["SMOKE", "SANITY", "REGRESSION", "ADVANCED", "EXPLORATORY"]).optional(),
