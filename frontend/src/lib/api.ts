@@ -1,10 +1,21 @@
-import axios, { AxiosError } from "axios";
+import axios, { AxiosError, AxiosRequestConfig } from "axios";
 import { toast } from "sonner";
 import i18n from "../i18n";
+
+// Augment axios' request config with a project-specific `silent` flag so
+// callers can opt out of the global error-toast without a cast.
+declare module "axios" {
+  export interface AxiosRequestConfig {
+    silent?: boolean;
+  }
+}
 
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL ?? "http://localhost:4000/api",
 });
+
+// Re-export for convenience when typing a custom config inline.
+export type ApiRequestConfig = AxiosRequestConfig;
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");

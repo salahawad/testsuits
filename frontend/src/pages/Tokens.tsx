@@ -1,9 +1,18 @@
-import { FormEvent, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Copy, Plus, Trash2 } from "lucide-react";
+import { z } from "zod";
 import { api } from "../lib/api";
 import { logger } from "../lib/logger";
+import { Field } from "../components/Field";
+import { useZodForm } from "../lib/useZodForm";
+import { apiErrorMessage } from "../lib/apiError";
+import { InlineLoader } from "../components/Spinner";
+import { Button } from "../components/ui/Button";
+import { PageHeader } from "../components/ui/PageHeader";
+import { Alert } from "../components/ui/Alert";
+import { useConfirm } from "../components/ui/ConfirmDialog";
 
 type Token = {
   id: string;
@@ -12,14 +21,21 @@ type Token = {
   lastUsedAt: string | null;
 };
 
+const schema = z.object({
+  name: z.string().min(1, "Name is required").max(120, "Name is too long"),
+});
+type Values = z.infer<typeof schema>;
+
 export function Tokens() {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const confirm = useConfirm();
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
   const [plaintext, setPlaintext] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const form = useZodForm<Values>(schema, { defaultValues: { name: "" } });
 
   const { data: tokens = [], isLoading } = useQuery<Token[]>({
     queryKey: ["tokens"],
@@ -27,27 +43,21 @@ export function Tokens() {
   });
 
   const create = useMutation({
-    mutationFn: async () => (await api.post("/tokens", { name })).data,
+    mutationFn: async (values: Values) => (await api.post("/tokens", values, { silent: true })).data,
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["tokens"] });
       setPlaintext(data.plaintext);
-      setName("");
-      setErr(null);
+      form.reset({ name: "" });
+      setSubmitError(null);
       logger.info("api token created via UI");
     },
-    onError: (e: any) => setErr(e.response?.data?.error ?? "Create failed"),
+    onError: (e: unknown) => setSubmitError(apiErrorMessage(e, "Create failed")),
   });
 
   const revoke = useMutation({
     mutationFn: async (id: string) => api.delete(`/tokens/${id}`),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["tokens"] }),
   });
-
-  function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    if (!name.trim()) return;
-    create.mutate();
-  }
 
   function onCopy() {
     if (!plaintext) return;
@@ -57,6 +67,12 @@ export function Tokens() {
     });
   }
 
+  function closeForm() {
+    setOpen(false);
+    form.reset({ name: "" });
+    setSubmitError(null);
+  }
+
   function onCloseReveal() {
     setPlaintext(null);
     setOpen(false);
@@ -64,38 +80,45 @@ export function Tokens() {
 
   return (
     <div className="space-y-6">
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">{t("tokens.title")}</h1>
-          <p className="text-sm text-slate-500">{t("tokens.subtitle")}</p>
-        </div>
-        <button className="btn-primary" onClick={() => { setOpen(true); setPlaintext(null); }}>
-          <Plus size={16} /> {t("tokens.new")}
-        </button>
-      </header>
+      <PageHeader
+        title={t("tokens.title")}
+        subtitle={t("tokens.subtitle")}
+        actions={
+          <Button
+            variant="primary"
+            leftIcon={<Plus size={16} />}
+            onClick={() => { setOpen(true); setPlaintext(null); setSubmitError(null); }}
+          >
+            {t("tokens.new")}
+          </Button>
+        }
+      />
 
       {open && !plaintext && (
-        <form onSubmit={onSubmit} className="card p-5 space-y-3">
-          <div>
-            <label className="label">{t("tokens.name_label")}</label>
+        <form
+          noValidate
+          onSubmit={form.handleSubmit((values) => create.mutate(values))}
+          className="card p-5 space-y-3"
+        >
+          <Field
+            name="name"
+            label={t("tokens.name_label")}
+            description={t("tokens.name_help")}
+            error={form.formState.errors.name?.message}
+          >
             <input
               className="input"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t("tokens.name_placeholder") ?? "e.g. GitHub Actions"}
               autoFocus
-              required
+              placeholder={t("tokens.name_placeholder") ?? "e.g. GitHub Actions"}
+              {...form.register("name")}
             />
-            <p className="text-xs text-slate-500 mt-1">{t("tokens.name_help")}</p>
-          </div>
-          {err && <div className="text-sm text-red-600">{err}</div>}
+          </Field>
+          {submitError && <Alert>{submitError}</Alert>}
           <div className="flex gap-2 justify-end">
-            <button type="button" className="btn-secondary" onClick={() => setOpen(false)}>
-              {t("common.cancel")}
-            </button>
-            <button type="submit" className="btn-primary" disabled={create.isPending}>
+            <Button type="button" onClick={closeForm}>{t("common.cancel")}</Button>
+            <Button type="submit" variant="primary" loading={create.isPending}>
               {t("common.create")}
-            </button>
+            </Button>
           </div>
         </form>
       )}
@@ -117,16 +140,16 @@ export function Tokens() {
             </button>
           </div>
           <div className="flex justify-end">
-            <button type="button" className="btn-primary" onClick={onCloseReveal}>
+            <Button variant="primary" onClick={onCloseReveal}>
               {t("tokens.ive_saved_it")}
-            </button>
+            </Button>
           </div>
         </div>
       )}
 
-      <div className="card divide-y divide-slate-100">
+      <div className="card divide-y divide-slate-100 dark:divide-slate-800">
         {isLoading ? (
-          <div className="px-5 py-4 text-sm text-slate-500">{t("common.loading")}</div>
+          <InlineLoader />
         ) : tokens.length === 0 ? (
           <div className="px-5 py-8 text-sm text-slate-500 text-center">{t("tokens.empty")}</div>
         ) : (
@@ -142,12 +165,22 @@ export function Tokens() {
                     : t("tokens.never_used")}
                 </div>
               </div>
-              <button
+              <Button
+                variant="ghost"
+                size="sm"
+                aria-label={t("common.delete")}
                 className="text-slate-400 hover:text-red-600"
-                onClick={() => { if (confirm(t("tokens.revoke_confirm"))) revoke.mutate(tok.id); }}
+                loading={revoke.isPending && revoke.variables === tok.id}
+                onClick={async () => {
+                  if (await confirm({
+                    title: t("tokens.revoke_confirm"),
+                    confirmLabel: t("common.delete"),
+                    tone: "danger",
+                  })) revoke.mutate(tok.id);
+                }}
               >
-                <Trash2 size={14} />
-              </button>
+                {!(revoke.isPending && revoke.variables === tok.id) && <Trash2 size={14} />}
+              </Button>
             </div>
           ))
         )}

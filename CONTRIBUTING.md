@@ -75,10 +75,27 @@ Fill in the [pull request template](.github/PULL_REQUEST_TEMPLATE.md). Call out 
 - **Multi-tenant scoping** is enforced at the query level in `backend/src/middleware/scope.ts`. Every new route that reads tenant data must use one of the `*Where` helpers.
 - **i18n** — every user-visible string must exist in both `frontend/src/i18n/en.json` and `frontend/src/i18n/fr.json` with identical key paths.
 - **Logging** — the backend uses pino with request IDs; the frontend uses a shared structured logger. See [CLAUDE.md](CLAUDE.md) for when to log at each level.
+- **Forms** — new forms use `react-hook-form` with a zod schema via the [`useZodForm`](frontend/src/lib/useZodForm.ts) helper, render each input through the [`<Field>`](frontend/src/components/Field.tsx) primitive (label + description + error + aria plumbing), and set `noValidate` on the `<form>` so the browser's native popup never fires. Field-level errors render inline under the input; async / server / 5xx errors surface through the global sonner toast in [`lib/api.ts`](frontend/src/lib/api.ts). Don't disable the submit button based on validity — let users press it and scroll to the first invalid field. Mirror the server zod schema in [`lib/schemas.ts`](frontend/src/lib/schemas.ts) when a rule is shared across both sides (e.g. password policy).
 
 ## Licensing
 
-By contributing, you agree that your contributions will be licensed under the [MIT License](LICENSE).
+TestSuits is distributed under the [Business Source License 1.1](LICENSE). The
+default Additional Use Grant allows internal business use and non-commercial
+use; commercial hosted / managed offerings require a separate agreement — see
+[COMMERCIAL.md](COMMERCIAL.md). On the Change Date named in the LICENSE, the
+code converts automatically to the Apache License 2.0.
+
+**Every commit must be signed off with the [Developer Certificate of Origin](https://developercertificate.org/).**
+Run `git commit -s` — this adds a `Signed-off-by: Your Name <you@example.com>`
+trailer. By signing off you confirm that:
+
+1. You wrote the change, or have the right to submit it under the project's
+   current licence (BUSL 1.1) and its Change License (Apache 2.0).
+2. AI-generated code is treated as your own work — you've read and accepted
+   it.
+
+PRs without a sign-off will be asked to rebase with `git commit --amend -s`
+or `git rebase -i --signoff`.
 
 ## Code of Conduct
 

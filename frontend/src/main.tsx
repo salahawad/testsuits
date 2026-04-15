@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter } from "react-router-dom";
 import { Toaster } from "sonner";
 import { App } from "./App";
+import { ConfirmProvider } from "./components/ui/ConfirmDialog";
 import "./index.css";
 import "./i18n";
 import "./lib/logger";
@@ -16,8 +17,10 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
-        <App />
-        <Toaster position="top-right" richColors closeButton />
+        <ConfirmProvider>
+          <App />
+          <Toaster position="top-right" richColors closeButton />
+        </ConfirmProvider>
       </BrowserRouter>
     </QueryClientProvider>
   </React.StrictMode>

@@ -110,7 +110,7 @@ export function SsoSettings() {
         <p className="text-sm text-slate-500">{t("sso.subtitle")}</p>
       </header>
 
-      <form onSubmit={onSubmit} className="card p-5 space-y-5">
+      <form noValidate onSubmit={onSubmit} className="card p-5 space-y-5">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold">{t("sso.saml_config")}</h2>
           <label className="flex items-center gap-2 text-sm">
@@ -119,7 +119,7 @@ export function SsoSettings() {
           </label>
         </div>
 
-        <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded p-3">
+        <p className="text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded p-3">
           {t("sso.config_hint")}
         </p>
 
@@ -166,7 +166,7 @@ export function SsoSettings() {
 
         {err && <div className="text-sm text-red-600">{err}</div>}
 
-        <div className="flex justify-end pt-4 border-t border-slate-100">
+        <div className="flex justify-end pt-4 border-t border-slate-100 dark:border-slate-800">
           <button type="submit" className="btn-primary" disabled={save.isPending}>{t("common.save")}</button>
         </div>
       </form>
@@ -178,6 +178,7 @@ export function SsoSettings() {
         </div>
 
         <form
+          noValidate
           onSubmit={(e) => { e.preventDefault(); if (tokenName.trim()) createToken.mutate(); }}
           className="flex gap-2"
         >
@@ -193,7 +194,7 @@ export function SsoSettings() {
         </form>
 
         {newToken && (
-          <div className="rounded-md bg-amber-50 border border-amber-200 p-3 space-y-2">
+          <div className="rounded-md bg-amber-50 border border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/30 dark:text-amber-100 p-3 space-y-2">
             <div className="text-sm font-semibold text-amber-900">{t("sso.token_shown_once")}</div>
             <div className="flex items-center gap-2 rounded-md bg-slate-900 text-slate-100 px-3 py-2 font-mono text-xs">
               <span className="flex-1 break-all">{newToken}</span>
@@ -208,7 +209,7 @@ export function SsoSettings() {
         {tokens.length === 0 ? (
           <div className="text-sm text-slate-500">{t("sso.no_scim_tokens")}</div>
         ) : (
-          <ul className="divide-y divide-slate-100">
+          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
             {tokens.map((tk) => (
               <li key={tk.id} className="py-2 flex items-center justify-between gap-3">
                 <div className="min-w-0 flex-1">

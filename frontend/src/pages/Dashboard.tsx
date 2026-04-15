@@ -16,6 +16,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { api } from "../lib/api";
+import { PageLoader } from "../components/Spinner";
 import { priorityColors, runStatusColors } from "../lib/status";
 import { logger } from "../lib/logger";
 
@@ -56,7 +57,7 @@ const statusMeta: Record<StatusKey, { label: string; bar: string; dot: string; t
   FAILED:  { label: "Failed",  bar: "bg-red-500",     dot: "bg-red-500",     text: "text-red-700" },
   BLOCKED: { label: "Blocked", bar: "bg-amber-500",   dot: "bg-amber-500",   text: "text-amber-700" },
   SKIPPED: { label: "Skipped", bar: "bg-slate-400",   dot: "bg-slate-400",   text: "text-slate-600" },
-  PENDING: { label: "Pending", bar: "bg-slate-200",   dot: "bg-slate-300",   text: "text-slate-500" },
+  PENDING: { label: "Pending", bar: "bg-slate-200 dark:bg-slate-700", dot: "bg-slate-300 dark:bg-slate-600", text: "text-slate-500 dark:text-slate-400" },
 };
 
 const statusOrder: StatusKey[] = ["PASSED", "FAILED", "BLOCKED", "SKIPPED", "PENDING"];
@@ -69,7 +70,7 @@ export function Dashboard() {
   });
 
   if (error) logger.error("dashboard fetch failed", { error: String(error) });
-  if (isLoading) return <div className="text-slate-500">{t("common.loading")}</div>;
+  if (isLoading) return <PageLoader />;
   if (!data) return null;
 
   const passRate = data.passRate as number;
@@ -86,12 +87,12 @@ export function Dashboard() {
   ] as const;
 
   const toneClasses: Record<string, { border: string; bg: string; icon: string; text: string }> = {
-    indigo:  { border: "border-l-indigo-500",  bg: "bg-indigo-50",  icon: "text-indigo-600",  text: "text-indigo-900" },
-    slate:   { border: "border-l-slate-400",   bg: "bg-slate-50",   icon: "text-slate-600",   text: "text-slate-900" },
-    violet:  { border: "border-l-violet-500",  bg: "bg-violet-50",  icon: "text-violet-600",  text: "text-violet-900" },
-    emerald: { border: "border-l-emerald-500", bg: "bg-emerald-50", icon: "text-emerald-600", text: "text-emerald-900" },
-    amber:   { border: "border-l-amber-500",   bg: "bg-amber-50",   icon: "text-amber-600",   text: "text-amber-900" },
-    red:     { border: "border-l-red-500",     bg: "bg-red-50",     icon: "text-red-600",     text: "text-red-900" },
+    indigo:  { border: "border-l-indigo-500",  bg: "bg-indigo-50 dark:bg-indigo-500/10",   icon: "text-indigo-600 dark:text-indigo-300",   text: "text-indigo-900 dark:text-indigo-100" },
+    slate:   { border: "border-l-slate-400",   bg: "bg-slate-50 dark:bg-slate-800/50",     icon: "text-slate-600 dark:text-slate-300",     text: "text-slate-900 dark:text-slate-100" },
+    violet:  { border: "border-l-violet-500",  bg: "bg-violet-50 dark:bg-violet-500/10",   icon: "text-violet-600 dark:text-violet-300",   text: "text-violet-900 dark:text-violet-100" },
+    emerald: { border: "border-l-emerald-500", bg: "bg-emerald-50 dark:bg-emerald-500/10", icon: "text-emerald-600 dark:text-emerald-300", text: "text-emerald-900 dark:text-emerald-100" },
+    amber:   { border: "border-l-amber-500",   bg: "bg-amber-50 dark:bg-amber-500/10",     icon: "text-amber-600 dark:text-amber-300",     text: "text-amber-900 dark:text-amber-100" },
+    red:     { border: "border-l-red-500",     bg: "bg-red-50 dark:bg-red-500/10",         icon: "text-red-600 dark:text-red-300",         text: "text-red-900 dark:text-red-100" },
   };
 
   const totalExec = data.totals.executions as number;
@@ -129,7 +130,7 @@ export function Dashboard() {
           <div className="text-sm text-slate-500">—</div>
         ) : (
           <>
-            <div className="flex h-3 w-full rounded-full overflow-hidden bg-slate-100">
+            <div className="flex h-3 w-full rounded-full overflow-hidden bg-slate-100 dark:bg-slate-800">
               {statusOrder.map((s) => {
                 const count = sc[s] ?? 0;
                 if (!count) return null;
@@ -198,11 +199,11 @@ export function Dashboard() {
                   <li key={m.id}>
                     <div className="flex items-center justify-between gap-2 mb-1">
                       <div className="font-medium truncate">{m.name}</div>
-                      <span className={`badge ${tone === "emerald" ? "bg-emerald-100 text-emerald-700" : tone === "red" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
+                      <span className={`badge ${tone === "emerald" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" : tone === "red" ? "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300" : "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"}`}>
                         {ready ? "READY" : m.blockerOpen > 0 ? `${m.blockerOpen} BLOCKERS` : "IN PROGRESS"}
                       </span>
                     </div>
-                    <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden flex">
+                    <div className="h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden flex">
                       {m.total > 0 && <div className="bg-emerald-500" style={{ width: `${(m.passed / m.total) * 100}%` }} />}
                       {m.total > 0 && <div className="bg-red-500" style={{ width: `${(m.failed / m.total) * 100}%` }} />}
                       {m.total > 0 && <div className="bg-amber-500" style={{ width: `${(m.blocked / m.total) * 100}%` }} />}
@@ -239,7 +240,7 @@ export function Dashboard() {
                 return (
                   <div key={bucket} className="flex items-center gap-3">
                     <div className="text-xs font-semibold uppercase text-slate-600 w-16">{bucket}</div>
-                    <div className="flex-1 h-2 rounded-full bg-slate-100 overflow-hidden">
+                    <div className="flex-1 h-2 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
                       <div className={`h-full ${tone}`} style={{ width: `${pct}%` }} />
                     </div>
                     <div className="text-sm font-medium w-16 text-right">
@@ -265,7 +266,7 @@ export function Dashboard() {
           {(data.myAssignments ?? []).length === 0 ? (
             <div className="text-sm text-slate-500">{t("dashboard.no_assignments")}</div>
           ) : (
-            <ul className="divide-y divide-slate-100">
+            <ul className="divide-y divide-slate-100 dark:divide-slate-800">
               {data.myAssignments.map((e: any) => (
                 <li key={e.id} className="py-2 flex items-center justify-between gap-3">
                   <div className="min-w-0 flex-1">
@@ -301,7 +302,7 @@ export function Dashboard() {
                     </Link>
                     <span className="text-xs text-slate-500 shrink-0">{r.done}/{r.total}</span>
                   </div>
-                  <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                  <div className="h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden">
                     <div className="h-full bg-violet-500" style={{ width: `${r.progress}%` }} />
                   </div>
                   <div className="text-xs text-slate-500 mt-1 flex items-center gap-2">
@@ -320,7 +321,7 @@ export function Dashboard() {
           {data.recentRuns.length === 0 ? (
             <div className="text-sm text-slate-500">{t("dashboard.no_runs")}</div>
           ) : (
-            <ul className="divide-y divide-slate-100">
+            <ul className="divide-y divide-slate-100 dark:divide-slate-800">
               {data.recentRuns.map((r: any) => (
                 <li key={r.id} className="py-2 flex items-center justify-between">
                   <div>
@@ -342,7 +343,7 @@ export function Dashboard() {
           {(data.upcomingMilestones ?? []).length === 0 ? (
             <div className="text-sm text-slate-500">{t("dashboard.no_upcoming_milestones")}</div>
           ) : (
-            <ul className="divide-y divide-slate-100">
+            <ul className="divide-y divide-slate-100 dark:divide-slate-800">
               {data.upcomingMilestones.map((m: any) => (
                 <li key={m.id} className="py-2 flex items-center justify-between gap-3">
                   <div className="min-w-0 flex-1">
@@ -368,7 +369,7 @@ export function Dashboard() {
           {(data.topFailingCases ?? []).length === 0 ? (
             <div className="text-sm text-slate-500">{t("dashboard.no_failing_cases")}</div>
           ) : (
-            <ul className="divide-y divide-slate-100">
+            <ul className="divide-y divide-slate-100 dark:divide-slate-800">
               {data.topFailingCases.map((c: any) => (
                 <li key={c.id} className="py-2 flex items-center justify-between gap-3">
                   <div className="min-w-0 flex-1">
@@ -379,7 +380,7 @@ export function Dashboard() {
                       {c.suite.project.name} · {c.suite.name}
                     </div>
                   </div>
-                  <span className="badge bg-red-100 text-red-700 flex items-center gap-1 shrink-0">
+                  <span className="badge bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300 flex items-center gap-1 shrink-0">
                     <Bug size={12} /> {c.failures}
                   </span>
                 </li>

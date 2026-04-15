@@ -1,17 +1,32 @@
-import { FormEvent, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { FolderTree, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { z } from "zod";
 import { api } from "../lib/api";
+import { PageLoader } from "../components/Spinner";
+import { Field } from "../components/Field";
+import { useZodForm } from "../lib/useZodForm";
+import { nonEmpty } from "../lib/schemas";
+import { apiErrorMessage } from "../lib/apiError";
+
+const suiteSchema = z.object({
+  name: nonEmpty("Suite name"),
+  description: z.string().optional(),
+});
+type SuiteValues = z.infer<typeof suiteSchema>;
 
 export function ProjectDetail() {
   const { t } = useTranslation();
   const { id } = useParams();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [name, setName] = useState("");
-  const [description, setDescription] = useState("");
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const form = useZodForm<SuiteValues>(suiteSchema, {
+    defaultValues: { name: "", description: "" },
+  });
 
   const { data: project, isLoading } = useQuery({
     queryKey: ["project", id],
@@ -20,22 +35,29 @@ export function ProjectDetail() {
   });
 
   const createSuite = useMutation({
-    mutationFn: async () => (await api.post("/suites", { projectId: id, name, description })).data,
+    mutationFn: async (values: SuiteValues) =>
+      (await api.post("/suites", {
+        projectId: id,
+        name: values.name,
+        description: values.description || null,
+      }, { silent: true })).data,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["project", id] });
       setOpen(false);
-      setName("");
-      setDescription("");
+      form.reset({ name: "", description: "" });
+      setSubmitError(null);
     },
+    onError: (e: unknown) => setSubmitError(apiErrorMessage(e, "Create failed")),
   });
 
-  function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    createSuite.mutate();
-  }
-
-  if (isLoading) return <div className="text-slate-500">{t("common.loading")}</div>;
+  if (isLoading) return <PageLoader />;
   if (!project) return null;
+
+  function closeForm() {
+    setOpen(false);
+    form.reset({ name: "", description: "" });
+    setSubmitError(null);
+  }
 
   return (
     <div className="space-y-6">
@@ -55,18 +77,23 @@ export function ProjectDetail() {
       </header>
 
       {open && (
-        <form onSubmit={onSubmit} className="card p-5 space-y-3">
-          <div>
-            <label className="label">{t("projects.suite_name")}</label>
-            <input className="input" value={name} onChange={(e) => setName(e.target.value)} required />
-          </div>
-          <div>
-            <label className="label">{t("common.description")}</label>
-            <textarea className="input" rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
-          </div>
+        <form
+          noValidate
+          onSubmit={form.handleSubmit((values) => createSuite.mutate(values))}
+          className="card p-5 space-y-3"
+        >
+          <Field name="name" label={t("projects.suite_name")} error={form.formState.errors.name?.message}>
+            <input className="input" autoFocus {...form.register("name")} />
+          </Field>
+          <Field name="description" label={t("common.description")} error={form.formState.errors.description?.message}>
+            <textarea className="input" rows={2} {...form.register("description")} />
+          </Field>
+          {submitError && <div role="alert" className="text-sm text-red-600">{submitError}</div>}
           <div className="flex gap-2 justify-end">
-            <button type="button" className="btn-secondary" onClick={() => setOpen(false)}>{t("common.cancel")}</button>
-            <button type="submit" className="btn-primary" disabled={createSuite.isPending}>{t("common.create")}</button>
+            <button type="button" className="btn-secondary" onClick={closeForm}>{t("common.cancel")}</button>
+            <button type="submit" className="btn-primary" disabled={createSuite.isPending}>
+              {createSuite.isPending ? t("common.please_wait") : t("common.create")}
+            </button>
           </div>
         </form>
       )}

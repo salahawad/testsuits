@@ -2,6 +2,8 @@
   "name": "testsuits-api",
   "version": "0.1.0",
   "private": true,
+  "license": "BUSL-1.1",
+  "author": "Salah AWAD <salah.awad@outlook.com>",
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsc",

@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { api } from "../lib/api";
 import { Markdown } from "../lib/markdown";
 import { RichEditor } from "./RichEditor";
+import { Spinner } from "./Spinner";
 import { logger } from "../lib/logger";
 import { apiErrorMessage } from "../lib/apiError";
 
@@ -85,7 +86,7 @@ export function SharedStepsEditor({ projectId, canEdit }: { projectId: string; c
       </header>
 
       {open && canEdit && (
-        <form onSubmit={onSubmit} className="border border-slate-200 rounded p-3 space-y-3">
+        <form onSubmit={onSubmit} className="border border-slate-200 dark:border-slate-700 rounded p-3 space-y-3">
           <div>
             <label className="label">{t("shared_steps.name")}</label>
             <input className="input" required value={name} onChange={(e) => setName(e.target.value)} />
@@ -109,7 +110,7 @@ export function SharedStepsEditor({ projectId, canEdit }: { projectId: string; c
 
       {steps.length === 0 && <div className="text-sm text-slate-500">{t("shared_steps.empty")}</div>}
 
-      <ul className="divide-y divide-slate-100">
+      <ul className="divide-y divide-slate-100 dark:divide-slate-800">
         {steps.map((s) => (
           <li key={s.id} className="py-3">
             <div className="flex items-start justify-between gap-3">
@@ -127,10 +128,14 @@ export function SharedStepsEditor({ projectId, canEdit }: { projectId: string; c
                 </div>
               </div>
               {canEdit && (
-                <button className="text-slate-400 hover:text-red-600" onClick={() => {
-                  if (confirm(t("shared_steps.delete_confirm"))) remove.mutate(s.id);
-                }}>
-                  <Trash2 size={16} />
+                <button
+                  className="text-slate-400 hover:text-red-600 disabled:opacity-50"
+                  disabled={remove.isPending && remove.variables === s.id}
+                  onClick={() => { if (confirm(t("shared_steps.delete_confirm"))) remove.mutate(s.id); }}
+                >
+                  {remove.isPending && remove.variables === s.id
+                    ? <Spinner size={16} className="text-red-600" />
+                    : <Trash2 size={16} />}
                 </button>
               )}
             </div>

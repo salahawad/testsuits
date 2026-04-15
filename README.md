@@ -6,7 +6,7 @@ A self-hosted test management platform for manual functional QA. Organise projec
 - **Jira integration** — Jira credentials are configured once per company; each project picks which Jira project to file bugs into. `Create Jira bug` on a failed execution only enables when the execution's project has a Jira binding and the company has Jira credentials saved.
 - **Custom fields** — per-project configurable fields (text, long text, number, select, checkbox) that attach to every test case in the project.
 - **Shared / reusable steps** — a per-project library of named steps; insert one into any case from the step editor.
-- **Rich-text steps** — action/expected accept Markdown (bold, italic, inline code, bullet/numbered lists, links) and render natively in view mode.
+- **Rich-text editor** — WYSIWYG (TipTap) with a toolbar (bold, italic, inline code, bullet/numbered lists, links, undo/redo) on the fields where formatting actually helps forensic detail: step action/expected, preconditions, shared-step library entries, and — on execution detail — *Actual result* and *Why it failed*. Stored and rendered as Markdown, so plain-text content round-trips and existing rows stay readable. Link URLs are restricted to `http(s)`/`mailto`/`tel` — `javascript:` and other schemes are blocked at both insert and render time.
 - **Webhooks** — configure outbound HTTP webhooks per project on events (`run.created`, `run.completed`, `execution.failed`, `execution.passed`, `jira.bug_created`). Optional HMAC-SHA256 signing, delivery log, test-fire button.
 - **Kanban run view** — toggle between list and kanban on the Runs page; managers drag cards between columns to change a run's status.
 - **Evidence storage** — upload screenshots, videos and logs against cases or executions.
@@ -22,12 +22,16 @@ A self-hosted test management platform for manual functional QA. Organise projec
 - **Test case versioning** — every `PATCH /cases/:id` snapshots the prior state to `TestCaseRevision` and `GET /cases/:id/revisions` returns the full audit trail. The case detail page exposes a History panel that lists revisions with author/date/changed-field summary; a per-version field-level diff view is on the roadmap.
 - **Executive dashboard** — stat tiles, 30-day execution & pass-rate trend, release-readiness per milestone, defect aging buckets, top failing cases.
 - **i18n** — English and French built in with a language switcher; sidebar collapses for more canvas.
+- **Dark mode** — light by default. Toggle in the sidebar; the choice is saved in `localStorage` and applied pre-hydration so there's no flash on refresh. Toasts and the TipTap editor follow the theme automatically.
 
 ## Stack
 
 | Layer             | Tech                                                              |
 | ----------------- | ----------------------------------------------------------------- |
-| Frontend          | React 18, Vite, TypeScript, Tailwind, TanStack Query, Zustand     |
+| Frontend          | React 18, Vite, TypeScript, Tailwind (with `darkMode: "class"`), TanStack Query, Zustand |
+| Forms             | react-hook-form + Zod (shared schemas with the backend)           |
+| Feedback          | sonner toasts for async / server errors; inline ARIA-wired errors for field validation |
+| Theming           | class-strategy dark mode; state in `lib/theme.tsx`; pre-hydration set in `index.html` |
 | Backend           | Node.js 20, Express, TypeScript, Prisma, Zod, JWT auth            |
 | Database          | PostgreSQL 16                                                     |
 | Object storage    | MinIO (S3-compatible)                                             |
@@ -88,10 +92,12 @@ All runtime configuration is controlled by `.env`. Copy `.env.example` and tweak
 | `POSTGRES_PASSWORD`| Postgres password                                         |
 | `POSTGRES_DB`      | Database name                                             |
 | `DATABASE_URL`     | Prisma connection string (uses the three vars above)      |
-| `JWT_SECRET`       | Signing secret for JWTs — **set a strong value for prod** |
+| `JWT_SECRET`       | Signing secret for JWTs — **required in production** (API refuses to start with the default/empty value when `NODE_ENV=production`). Generate with `openssl rand -hex 48`. |
 | `API_PORT`         | Port the Express API listens on (inside the container)    |
 | `WEB_PORT`         | Port the Vite dev server listens on                       |
 | `VITE_API_URL`     | URL the **browser** uses to reach the API                 |
+| `CORS_ALLOWED_ORIGINS` | Comma-separated list of origins allowed to call the API. Leave empty in dev for auto-reflect. **Required in production** — an empty list denies all cross-origin requests. |
+| `TRUST_PROXY`      | Number of reverse-proxy hops to trust for `X-Forwarded-For` (e.g. `1` behind a single LB). Without this, per-IP rate limits collapse every request onto the proxy IP. |
 
 ### Host port overrides
 
@@ -418,6 +424,7 @@ All routes live under `/api`. Authentication is required except the public endpo
 | SAML (admin)      | `GET/PUT /saml/config` (admin); `GET /saml/:slug/login`, `POST /saml/:slug/acs` (public, IdP-facing)             |
 | SCIM tokens       | `GET/POST/DELETE /scim-tokens` (admin) — issue/revoke provisioning tokens                                       |
 | SCIM v2           | `GET/POST /scim/v2/Users`, `GET/PATCH/DELETE /scim/v2/Users/:id` (Bearer SCIM token)                             |
+| Client errors     | `POST /_client-log` (no auth) — frontend posts `window.onerror` / `unhandledrejection` via `sendBeacon`; per-IP rate-limited, routed through the server logger with `source:"client"` and session/user-correlation fields. |
 
 `(mgr)` = manager-level (MANAGER or ADMIN). `(admin)` = ADMIN-only.
 
@@ -430,6 +437,7 @@ All routes live under `/api`. Authentication is required except the public endpo
 - **Token management endpoints require a JWT session** — API-token callers can't mint, list, or revoke tokens, so a leaked token can't be used to create fresh credentials.
 - **Password reset** wipes the door on both sides: every outstanding JWT for that user is revoked (via `passwordUpdatedAt` compared against the JWT's `iat`) and every API token they own is deleted. If a password leaks, a single reset kicks everyone off the account.
 - **Login is timing-neutral** — bcrypt runs even when the email is unknown so response latency can't be used to enumerate accounts.
+- **Client error pipeline** (`POST /_client-log`) is **unauthenticated by design** — browsers can't send JWTs on `navigator.sendBeacon`. It's rate-limited per IP, body-capped, and zod-validated. Identity fields (`userId`, `userEmail`, `sessionId`) are **client-asserted and never used for authorization** — only for correlating client errors to backend traces. Authz still lives on the JWT-protected `/api/*` routes.
 
 ### Rate limiting
 
@@ -506,12 +514,28 @@ the **test** button to fire a sample payload at any time.
 
 ## Roadmap
 
-- SSO end-to-end against a real IdP (config + ACS routes are in place; wire passport-saml in `backend/src/routes/saml.ts`)
-- SCIM groups / role-to-group mapping (users work today)
+- SSO end-to-end against a real IdP — schema, admin UI, and the SP-initiated `/login` + `/acs` routes are shipped; the remaining gap is wiring `@node-saml/node-saml` into [backend/src/routes/saml.ts](backend/src/routes/saml.ts) to verify SAML assertions against the stored x509 cert
+- SCIM groups / role-to-group mapping (Users work today)
 - Playwright / Cypress reporter packages
 - Traceability matrix report
 - Test case versioning / history diff
 
 ## License
 
-MIT — see `LICENSE` if present, otherwise pick one before publishing publicly.
+Copyright © 2026 Salah AWAD. All rights reserved.
+
+TestSuits is distributed under the [Business Source License 1.1](LICENSE).
+
+- **Free for** personal use, evaluation, non-commercial projects, and **your
+  own internal business operations** (using TestSuits to manage your own
+  company's QA).
+- **Requires a commercial agreement for** offering TestSuits (or a derivative)
+  to third parties as a hosted or managed service — for example, a
+  multi-tenant SaaS.
+
+On the Change Date (2030-04-15) this version of the code becomes available
+under the Apache License 2.0.
+
+To request a commercial licence, see [COMMERCIAL.md](COMMERCIAL.md) or email
+`salah.awad@outlook.com`. Contributions are accepted under DCO sign-off — see
+[CONTRIBUTING.md](CONTRIBUTING.md).

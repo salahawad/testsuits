@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { Toaster } from "sonner";
 import { useAuth } from "./lib/auth";
+import { useTheme } from "./lib/theme";
 import { Layout } from "./components/Layout";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { NotFound } from "./pages/NotFound";
@@ -42,9 +43,10 @@ function Protected({ children }: { children: React.ReactNode }) {
 }
 
 export function App() {
+  const theme = useTheme((s) => s.theme);
   return (
     <>
-    <Toaster position="top-right" richColors closeButton />
+    <Toaster position="top-right" richColors closeButton theme={theme} />
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />

@@ -1,10 +1,23 @@
-import { FormEvent, useState } from "react";
+import { useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft, Plus, Trash2, ExternalLink } from "lucide-react";
+import { z } from "zod";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { Field } from "../components/Field";
+import { useZodForm } from "../lib/useZodForm";
+import { nonEmpty } from "../lib/schemas";
+import { apiErrorMessage } from "../lib/apiError";
+import { InlineLoader } from "../components/Spinner";
+
+const schema = z.object({
+  externalRef: nonEmpty("External reference").max(200),
+  title: nonEmpty("Title").max(200),
+  description: z.string().optional(),
+});
+type Values = z.infer<typeof schema>;
 
 type Requirement = {
   id: string;
@@ -21,11 +34,14 @@ export function Requirements() {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const user = useAuth((s) => s.user);
-  const isManager = user?.role === "MANAGER";
+  const isManager = user?.role === "MANAGER" || user?.role === "ADMIN";
 
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ externalRef: "", title: "", description: "" });
-  const [err, setErr] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const form = useZodForm<Values>(schema, {
+    defaultValues: { externalRef: "", title: "", description: "" },
+  });
 
   const { data: project } = useQuery({
     queryKey: ["project", projectId],
@@ -40,15 +56,15 @@ export function Requirements() {
   });
 
   const create = useMutation({
-    mutationFn: async () =>
-      (await api.post(`/requirements`, { projectId, ...form, description: form.description || null })).data,
+    mutationFn: async (values: Values) =>
+      (await api.post(`/requirements`, { projectId, ...values, description: values.description || null }, { silent: true })).data,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["requirements", projectId] });
       setOpen(false);
-      setForm({ externalRef: "", title: "", description: "" });
-      setErr(null);
+      form.reset({ externalRef: "", title: "", description: "" });
+      setSubmitError(null);
     },
-    onError: (e: any) => setErr(e.response?.data?.error ?? "Create failed"),
+    onError: (e: unknown) => setSubmitError(apiErrorMessage(e, "Create failed")),
   });
 
   const remove = useMutation({
@@ -56,12 +72,13 @@ export function Requirements() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["requirements", projectId] }),
   });
 
-  function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    create.mutate();
-  }
-
   const isUrl = (ref: string) => /^https?:\/\//.test(ref);
+
+  function closeForm() {
+    setOpen(false);
+    form.reset({ externalRef: "", title: "", description: "" });
+    setSubmitError(null);
+  }
 
   return (
     <div className="space-y-6">
@@ -84,52 +101,45 @@ export function Requirements() {
       </header>
 
       {open && (
-        <form onSubmit={onSubmit} className="card p-5 space-y-3">
-          <div>
-            <label className="label">{t("requirements.external_ref")}</label>
+        <form
+          noValidate
+          onSubmit={form.handleSubmit((values) => create.mutate(values))}
+          className="card p-5 space-y-3"
+        >
+          <Field
+            name="externalRef"
+            label={t("requirements.external_ref")}
+            description={t("requirements.external_ref_help")}
+            error={form.formState.errors.externalRef?.message}
+          >
             <input
               className="input"
-              value={form.externalRef}
-              onChange={(e) => setForm({ ...form, externalRef: e.target.value })}
-              placeholder="ACME-1201 or https://jira.example.com/browse/ACME-1201"
-              required
               autoFocus
+              placeholder="ACME-1201 or https://jira.example.com/browse/ACME-1201"
+              {...form.register("externalRef")}
             />
-            <p className="text-xs text-slate-500 mt-1">{t("requirements.external_ref_help")}</p>
-          </div>
-          <div>
-            <label className="label">{t("requirements.req_title")}</label>
-            <input
-              className="input"
-              value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })}
-              required
-            />
-          </div>
-          <div>
-            <label className="label">{t("requirements.description")}</label>
-            <textarea
-              className="input"
-              rows={3}
-              value={form.description}
-              onChange={(e) => setForm({ ...form, description: e.target.value })}
-            />
-          </div>
-          {err && <div className="text-sm text-red-600">{err}</div>}
+          </Field>
+          <Field name="title" label={t("requirements.req_title")} error={form.formState.errors.title?.message}>
+            <input className="input" {...form.register("title")} />
+          </Field>
+          <Field name="description" label={t("requirements.description")} error={form.formState.errors.description?.message}>
+            <textarea className="input" rows={3} {...form.register("description")} />
+          </Field>
+          {submitError && <div role="alert" className="text-sm text-red-600">{submitError}</div>}
           <div className="flex gap-2 justify-end">
-            <button type="button" className="btn-secondary" onClick={() => setOpen(false)}>
+            <button type="button" className="btn-secondary" onClick={closeForm}>
               {t("common.cancel")}
             </button>
             <button type="submit" className="btn-primary" disabled={create.isPending}>
-              {t("common.create")}
+              {create.isPending ? t("common.please_wait") : t("common.create")}
             </button>
           </div>
         </form>
       )}
 
-      <div className="card divide-y divide-slate-100">
+      <div className="card divide-y divide-slate-100 dark:divide-slate-800">
         {isLoading ? (
-          <div className="px-5 py-4 text-sm text-slate-500">{t("common.loading")}</div>
+          <InlineLoader />
         ) : reqs.length === 0 ? (
           <div className="px-5 py-8 text-sm text-slate-500 text-center">{t("requirements.empty")}</div>
         ) : (
@@ -137,7 +147,7 @@ export function Requirements() {
             <div key={r.id} className="flex items-start justify-between px-5 py-3 gap-4">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="badge bg-brand-50 text-brand-700 font-mono">
+                  <span className="badge bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300 font-mono">
                     {isUrl(r.externalRef) ? (
                       <a href={r.externalRef} target="_blank" rel="noreferrer" className="hover:underline inline-flex items-center gap-1">
                         {r.externalRef} <ExternalLink size={11} />
@@ -147,7 +157,7 @@ export function Requirements() {
                     )}
                   </span>
                   <span className="font-medium">{r.title}</span>
-                  <span className="badge bg-slate-100 text-slate-700">
+                  <span className="badge bg-slate-100 text-slate-700 dark:bg-slate-700/50 dark:text-slate-200">
                     {t("requirements.linked_cases")}: {r._count?.cases ?? 0}
                   </span>
                 </div>

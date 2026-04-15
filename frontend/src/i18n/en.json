@@ -41,6 +41,10 @@
     "session_expired": "Your session expired. Please sign in again.",
     "forbidden": "You don't have permission to do that."
   },
+  "confirm": {
+    "default_title": "Are you sure?",
+    "default_confirm": "Confirm"
+  },
   "nav": {
     "dashboard": "Dashboard",
     "projects": "Projects",
@@ -60,6 +64,7 @@
     "create_company": "Create company",
     "company_name": "Company name",
     "company_name_help": "You'll become the first manager of this company. Add your team from the Team page afterwards.",
+    "confirm_password": "Confirm password",
     "no_account": "No account? Create one",
     "no_company": "New here? Create a company",
     "have_account": "Already have an account? Sign in"
@@ -320,6 +325,12 @@
     "manager": "Manager",
     "tester": "Tester",
     "delete_confirm": "Remove this teammate?"
+  },
+  "theme": {
+    "light": "Light",
+    "dark": "Dark",
+    "switch_to_dark": "Switch to dark theme",
+    "switch_to_light": "Switch to light theme"
   },
   "tokens": {
     "title": "API tokens",

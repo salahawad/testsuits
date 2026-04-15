@@ -35,7 +35,7 @@ export function ActivityFeed({ projectId, entityType, entityId, limit = 30 }: {
   return (
     <ul className="space-y-2">
       {items.map((a: any) => (
-        <li key={a.id} className="text-sm border-l-2 border-slate-200 pl-3">
+        <li key={a.id} className="text-sm border-l-2 border-slate-200 dark:border-slate-700 pl-3">
           <div>
             <span className="font-medium">{a.user?.name ?? "System"}</span>{" "}
             <span className="text-slate-600">{ACTION_LABELS[a.action] ?? a.action}</span>

@@ -19,7 +19,7 @@ export function LanguageSwitcher() {
       <Globe size={14} />
       <span className="sr-only">{t("nav.language")}</span>
       <select
-        className="bg-transparent border border-slate-200 rounded px-2 py-1 text-xs"
+        className="bg-transparent border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-xs"
         value={i18n.resolvedLanguage}
         onChange={onChange}
       >

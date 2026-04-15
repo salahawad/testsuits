@@ -40,7 +40,7 @@ export function Comments({ target }: { target: Target }) {
       <ul className="space-y-3">
         {comments.map((c: any) => (
           <li key={c.id} className="flex gap-3">
-            <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 text-xs font-semibold flex items-center justify-center flex-shrink-0">
+            <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 dark:bg-brand-500/20 dark:text-brand-300 text-xs font-semibold flex items-center justify-center flex-shrink-0">
               {c.user.name[0]?.toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">

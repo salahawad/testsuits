@@ -37,7 +37,7 @@ export class ErrorBoundary extends Component<Props, State> {
               The page hit an unexpected error. Reload to try again — if it keeps happening, report
               it with a note about what you were doing.
             </p>
-            <pre className="text-xs text-slate-500 text-left bg-slate-50 p-3 rounded overflow-auto max-h-40">
+            <pre className="text-xs text-slate-500 dark:text-slate-400 text-left bg-slate-50 dark:bg-slate-800 p-3 rounded overflow-auto max-h-40">
               {this.state.error.message}
             </pre>
             <div className="flex gap-2 justify-center">

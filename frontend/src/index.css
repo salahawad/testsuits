@@ -8,6 +8,7 @@ html, body, #root {
 
 body {
   @apply bg-slate-50 text-slate-900 antialiased;
+  @apply dark:bg-slate-950 dark:text-slate-100;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
 }
 
@@ -17,21 +18,26 @@ body {
   }
   .btn-primary {
     @apply btn bg-brand-600 text-white hover:bg-brand-700;
+    @apply dark:bg-brand-500 dark:hover:bg-brand-600;
   }
   .btn-secondary {
     @apply btn bg-white text-slate-700 border border-slate-300 hover:bg-slate-50;
+    @apply dark:bg-slate-900 dark:text-slate-200 dark:border-slate-700 dark:hover:bg-slate-800;
   }
   .btn-danger {
     @apply btn bg-red-600 text-white hover:bg-red-700;
   }
   .input {
     @apply w-full rounded-md border border-slate-300 bg-white px-3 py-1.5 text-sm shadow-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none;
+    @apply dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500;
   }
   .label {
     @apply block text-xs font-semibold uppercase tracking-wide text-slate-600 mb-1;
+    @apply dark:text-slate-300;
   }
   .card {
     @apply rounded-lg border border-slate-200 bg-white shadow-sm;
+    @apply dark:border-slate-800 dark:bg-slate-900 dark:shadow-none;
   }
   .badge {
     @apply inline-flex items-center px-2 py-0.5 rounded text-xs font-medium;
@@ -64,7 +70,14 @@ body {
   border-radius: 0.25rem;
   font-size: 0.85em;
 }
+.dark .tiptap-content .ProseMirror code {
+  background: rgb(30 41 59); /* slate-800 */
+  color: rgb(226 232 240); /* slate-200 */
+}
 .tiptap-content .ProseMirror a {
   color: rgb(37 99 235); /* brand-600ish */
   text-decoration: underline;
+}
+.dark .tiptap-content .ProseMirror a {
+  color: rgb(147 197 253); /* blue-300 */
 }

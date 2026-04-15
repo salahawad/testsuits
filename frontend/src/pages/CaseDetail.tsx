@@ -22,10 +22,12 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { toast } from "sonner";
 import { api } from "../lib/api";
-import { priorityColors } from "../lib/status";
+import { priorityTone } from "../lib/status";
 import { Comments } from "../components/Comments";
 import { Markdown } from "../lib/markdown";
 import { RichEditor } from "../components/RichEditor";
+import { PageLoader, Spinner } from "../components/Spinner";
+import { Badge } from "../components/ui/Badge";
 import { logger } from "../lib/logger";
 import { apiErrorMessage } from "../lib/apiError";
 
@@ -202,7 +204,7 @@ export function CaseDetail() {
     });
   }
 
-  if (isLoading) return <div className="text-slate-500">Loading…</div>;
+  if (isLoading) return <PageLoader />;
   if (!testCase) return null;
 
   const steps: Step[] = (editing ? draft.steps : testCase.steps) as Step[];
@@ -219,22 +221,28 @@ export function CaseDetail() {
           <div>
             <h1 className="text-2xl font-bold">{testCase.title}</h1>
             <div className="flex items-center gap-2 mt-2 flex-wrap">
-              <span className={`badge ${priorityColors[testCase.priority]}`}>{testCase.priority}</span>
-              {testCase.tags.map((t: string) => <span key={t} className="badge bg-slate-100 text-slate-700">{t}</span>)}
-              {testCase.estimatedMinutes && <span className="badge bg-slate-100 text-slate-700">{testCase.estimatedMinutes} min</span>}
+              <Badge tone={priorityTone(testCase.priority)}>{testCase.priority}</Badge>
+              {testCase.tags.map((t: string) => <Badge key={t} tone="neutral">{t}</Badge>)}
+              {testCase.estimatedMinutes && <Badge tone="neutral">{testCase.estimatedMinutes} min</Badge>}
               {testCase.cloneOf && (
-                <span className="badge bg-violet-100 text-violet-700">
+                <Badge tone="violet">
                   <Link to={`/cases/${testCase.cloneOf.id}`} className="hover:underline">cloned from: {testCase.cloneOf.title}</Link>
-                </span>
+                </Badge>
               )}
             </div>
           </div>
           <div className="flex gap-2">
             <button className="btn-secondary" onClick={() => setHistoryOpen((v) => !v)}><Clock size={14} /> History</button>
-            <button className="btn-secondary" onClick={() => clone.mutate()}><Copy size={14} /> Clone</button>
-            <button className="btn-secondary" onClick={startEdit}>Edit</button>
-            <button className="btn-secondary text-red-600" onClick={() => { if (confirm("Delete this case?")) remove.mutate(); }}>
-              <Trash2 size={14} />
+            <button className="btn-secondary" onClick={() => clone.mutate()} disabled={clone.isPending}>
+              {clone.isPending ? <Spinner size={14} className="text-slate-600" /> : <Copy size={14} />} {t("cases.clone")}
+            </button>
+            <button className="btn-secondary" onClick={startEdit}>{t("cases.edit")}</button>
+            <button
+              className="btn-secondary text-red-600"
+              disabled={remove.isPending}
+              onClick={() => { if (confirm(t("cases.delete_confirm"))) remove.mutate(); }}
+            >
+              {remove.isPending ? <Spinner size={14} className="text-red-600" /> : <Trash2 size={14} />}
             </button>
           </div>
         </header>
@@ -365,15 +373,15 @@ export function CaseDetail() {
           <ol className="space-y-3">
             {steps.map((s, i) => (
               <li key={i} className="flex gap-3 items-start">
-                <div className="w-6 h-6 mt-0.5 rounded-full bg-brand-50 text-brand-700 text-xs font-semibold leading-none flex items-center justify-center flex-shrink-0">{i + 1}</div>
+                <div className="w-6 h-6 mt-0.5 rounded-full bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300 text-xs font-semibold leading-none flex items-center justify-center flex-shrink-0">{i + 1}</div>
                 <div className="flex-1 grid grid-cols-2 gap-3">
                   <div>
                     <div className="text-xs text-slate-500 mb-0.5 flex items-center gap-1">
                       {t("cases.action")}
                       {s.sharedStepId && (
-                        <span className="badge bg-violet-100 text-violet-700 text-[10px]" title={t("cases.linked_shared_step")}>
+                        <Badge tone="violet" size="xs" title={t("cases.linked_shared_step")}>
                           <Link2 size={10} /> {t("cases.shared")}
-                        </span>
+                        </Badge>
                       )}
                     </div>
                     <Markdown source={s.action} className="text-sm" />
@@ -459,15 +467,15 @@ export function CaseDetail() {
 
       {libraryOpen && (
         <div className="fixed inset-0 bg-black/40 z-20 flex items-center justify-center p-4" onClick={() => setLibraryOpen(false)}>
-          <div className="bg-white rounded-lg shadow-xl max-w-xl w-full max-h-[80vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between p-4 border-b border-slate-100">
+          <div className="bg-white dark:bg-slate-900 dark:border dark:border-slate-800 rounded-lg shadow-xl max-w-xl w-full max-h-[80vh] overflow-auto" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b border-slate-100 dark:border-slate-800">
               <h3 className="font-semibold">{t("cases.shared_library")}</h3>
               <button className="text-slate-400 hover:text-slate-700" onClick={() => setLibraryOpen(false)}><X size={18} /></button>
             </div>
             <div className="p-4 space-y-2">
               {sharedSteps.length === 0 && <div className="text-sm text-slate-500">{t("cases.no_shared_steps")}</div>}
               {sharedSteps.map((s) => (
-                <button key={s.id} className="w-full text-left border border-slate-200 hover:border-brand-400 rounded-md p-3" onClick={() => insertSharedStep(s)}>
+                <button key={s.id} className="w-full text-left border border-slate-200 dark:border-slate-700 hover:border-brand-400 rounded-md p-3" onClick={() => insertSharedStep(s)}>
                   <div className="font-medium text-sm">{s.name}</div>
                   <div className="text-xs text-slate-500 mt-1 line-clamp-2">{s.action}</div>
                 </button>
@@ -480,7 +488,10 @@ export function CaseDetail() {
       {editing && (
         <div className="flex gap-2 justify-end">
           <button className="btn-secondary" onClick={() => setEditing(false)}>Cancel</button>
-          <button className="btn-primary" onClick={onSaveClick} disabled={save.isPending}>{t("common.save")}</button>
+          <button className="btn-primary" onClick={onSaveClick} disabled={save.isPending}>
+            {save.isPending && <Spinner size={14} className="text-white" />}
+            {t("common.save")}
+          </button>
         </div>
       )}
 
@@ -495,7 +506,7 @@ export function CaseDetail() {
         {testCase.attachments.length === 0 ? (
           <div className="text-sm text-slate-500">No attachments yet.</div>
         ) : (
-          <ul className="divide-y divide-slate-100">
+          <ul className="divide-y divide-slate-100 dark:divide-slate-800">
             {testCase.attachments.map((a: any) => (
               <li key={a.id} className="flex items-center justify-between py-2">
                 <div>
@@ -504,7 +515,15 @@ export function CaseDetail() {
                 </div>
                 <div className="flex gap-2">
                   <button className="btn-secondary" onClick={() => onDownload(a.id)}><Download size={14} /></button>
-                  <button className="btn-secondary text-red-600" onClick={() => deleteAttachment.mutate(a.id)}><Trash2 size={14} /></button>
+                  <button
+                    className="btn-secondary text-red-600"
+                    onClick={() => deleteAttachment.mutate(a.id)}
+                    disabled={deleteAttachment.isPending && deleteAttachment.variables === a.id}
+                  >
+                    {deleteAttachment.isPending && deleteAttachment.variables === a.id
+                      ? <Spinner size={14} className="text-red-600" />
+                      : <Trash2 size={14} />}
+                  </button>
                 </div>
               </li>
             ))}
@@ -521,7 +540,7 @@ export function CaseDetail() {
           {(revisions as any[]).length === 0 ? (
             <div className="text-sm text-slate-500">No prior revisions.</div>
           ) : (
-            <ul className="divide-y divide-slate-100">
+            <ul className="divide-y divide-slate-100 dark:divide-slate-800">
               {(revisions as any[]).map((r) => (
                 <li key={r.id} className="py-2 text-sm">
                   <div className="flex items-center justify-between">
@@ -574,7 +593,7 @@ function SortableStepRow({
     <li
       ref={setNodeRef}
       style={style}
-      className={`flex gap-3 items-start bg-white ${isDragging ? "shadow-lg ring-1 ring-brand-200 rounded-md" : ""}`}
+      className={`flex gap-3 items-start bg-white dark:bg-slate-900 ${isDragging ? "shadow-lg ring-1 ring-brand-200 dark:ring-brand-500/30 rounded-md" : ""}`}
     >
       <button
         type="button"
@@ -585,7 +604,7 @@ function SortableStepRow({
       >
         <GripVertical size={16} />
       </button>
-      <div className="w-6 h-6 mt-0.5 rounded-full bg-brand-50 text-brand-700 text-xs font-semibold leading-none flex items-center justify-center flex-shrink-0">
+      <div className="w-6 h-6 mt-0.5 rounded-full bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300 text-xs font-semibold leading-none flex items-center justify-center flex-shrink-0">
         {index + 1}
       </div>
       <div className="flex-1 grid grid-cols-2 gap-3">
@@ -659,7 +678,7 @@ function LinkedRequirements({
       ) : (
         <ul className="flex flex-wrap gap-2">
           {linked.map((r) => (
-            <li key={r.id} className="badge bg-brand-50 text-brand-700 flex items-center gap-1">
+            <li key={r.id} className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-xs font-medium bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300">
               {/^https?:\/\//.test(r.externalRef) ? (
                 <a href={r.externalRef} target="_blank" rel="noreferrer" className="hover:underline inline-flex items-center gap-1 font-mono">
                   {r.externalRef} <ExternalLink size={10} />

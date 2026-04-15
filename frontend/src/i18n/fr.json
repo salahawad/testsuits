@@ -41,6 +41,10 @@
     "session_expired": "Votre session a expiré. Veuillez vous reconnecter.",
     "forbidden": "Vous n'avez pas la permission d'effectuer cette action."
   },
+  "confirm": {
+    "default_title": "Êtes-vous sûr ?",
+    "default_confirm": "Confirmer"
+  },
   "nav": {
     "dashboard": "Tableau de bord",
     "projects": "Projets",
@@ -60,9 +64,29 @@
     "create_company": "Créer l'entreprise",
     "company_name": "Nom de l'entreprise",
     "company_name_help": "Vous en deviendrez le premier manager. Ajoutez votre équipe depuis la page Équipe ensuite.",
+    "confirm_password": "Confirmer le mot de passe",
     "no_account": "Pas de compte ? Créez-en un",
     "no_company": "Nouveau ? Créer une entreprise",
     "have_account": "Vous avez déjà un compte ? Se connecter"
+  },
+  "auth_reset": {
+    "forgot_title": "Réinitialiser votre mot de passe",
+    "forgot_help": "Saisissez votre e-mail. S'il est dans nos systèmes, nous vous enverrons un lien de réinitialisation.",
+    "forgot_submit": "Envoyer le lien",
+    "forgot_sent": "Si cet e-mail existe, un lien a été envoyé. Vérifiez votre boîte de réception.",
+    "forgot_dev_link": "Mode dev — lien de réinitialisation :",
+    "reset_title": "Choisissez un nouveau mot de passe",
+    "reset_help": "Les jetons expirent après 1 heure. Choisissez un mot de passe que vous n'utilisez pas ailleurs.",
+    "reset_submit": "Enregistrer le nouveau mot de passe",
+    "reset_success": "Mot de passe mis à jour. Vous pouvez maintenant vous connecter.",
+    "reset_invalid": "Ce lien de réinitialisation est invalide ou expiré. Demandez-en un nouveau.",
+    "invite_title": "Accepter votre invitation",
+    "invite_help": "Définissez un mot de passe pour finaliser la création de votre compte.",
+    "invite_submit": "Créer mon compte",
+    "invite_success": "Bienvenue à bord. Vous pouvez maintenant vous connecter.",
+    "invite_invalid": "Ce lien d'invitation est invalide ou expiré. Demandez à votre manager de le renvoyer.",
+    "back_to_login": "Retour à la connexion",
+    "forgot_link": "Mot de passe oublié ?"
   },
   "dashboard": {
     "title": "Tableau de bord",
@@ -139,7 +163,13 @@
     "custom_fields": "Champs personnalisés",
     "linked_shared_step": "Lié à une étape partagée",
     "shared": "Partagée",
-    "no_shared_steps": "Aucune étape partagée dans ce projet."
+    "no_shared_steps": "Aucune étape partagée dans ce projet.",
+    "saved": "Cas enregistré.",
+    "validation": {
+      "title_required": "Le titre est requis.",
+      "step_action_empty": "Étape {{step}} : l'action ne peut pas être vide.",
+      "step_expected_empty": "Étape {{step}} : le résultat attendu ne peut pas être vide."
+    }
   },
   "runs": {
     "title": "Exécutions",
@@ -175,7 +205,12 @@
     "view_list": "Liste",
     "view_kanban": "Kanban",
     "kanban_hint": "Glissez une carte d'une colonne à l'autre pour changer le statut.",
-    "kanban_empty_col": "Rien ici."
+    "kanban_empty_col": "Rien ici.",
+    "validation": {
+      "name_required": "Le nom de l'exécution est requis.",
+      "project_required": "Sélectionnez d'abord un projet.",
+      "suite_required": "Sélectionnez au moins une suite."
+    }
   },
   "milestones": {
     "title": "Jalons",
@@ -253,7 +288,11 @@
     "type_textarea": "Texte long",
     "type_number": "Nombre",
     "type_select": "Liste",
-    "type_checkbox": "Case à cocher"
+    "type_checkbox": "Case à cocher",
+    "saved": "Champs personnalisés enregistrés.",
+    "validation": {
+      "incomplete": "Corrigez les libellés vides et les listes sans options avant d'enregistrer."
+    }
   },
   "shared_steps": {
     "title": "Étapes partagées",
@@ -261,7 +300,13 @@
     "add": "Nouvelle étape partagée",
     "name": "Nom",
     "empty": "Aucune étape partagée. Créez-en une pour réutiliser la même action dans plusieurs cas.",
-    "delete_confirm": "Supprimer cette étape partagée ?"
+    "delete_confirm": "Supprimer cette étape partagée ?",
+    "created": "Étape partagée créée.",
+    "validation": {
+      "name_required": "Le nom est requis.",
+      "action_required": "L'action est requise.",
+      "expected_required": "Le résultat attendu est requis."
+    }
   },
   "webhooks": {
     "title": "Webhooks",
@@ -292,10 +337,51 @@
     "title": "Équipe",
     "subtitle": "Membres de {{company}}. Les managers voient tout, les testeurs uniquement leur travail.",
     "add_member": "Ajouter un membre",
+    "invite_member": "Inviter un collaborateur",
+    "invite_sent": "Invitation créée. Envoyez-lui ce lien :",
+    "invite_subtitle": "Envoyez une invitation par e-mail. Le collaborateur choisira son propre mot de passe depuis le lien.",
     "role": "Rôle",
     "manager": "Manager",
     "tester": "Testeur",
     "delete_confirm": "Retirer ce collaborateur ?"
+  },
+  "theme": {
+    "light": "Clair",
+    "dark": "Sombre",
+    "switch_to_dark": "Passer au thème sombre",
+    "switch_to_light": "Passer au thème clair"
+  },
+  "tokens": {
+    "title": "Jetons API",
+    "subtitle": "Jetons d'accès personnels pour scripts et CI. Chaque jeton hérite de votre rôle et de votre entreprise.",
+    "new": "Nouveau jeton",
+    "name_label": "Nom",
+    "name_placeholder": "ex. GitHub Actions",
+    "name_help": "Donnez une description au jeton pour l'identifier plus tard.",
+    "reveal_title": "Copiez votre jeton maintenant — il ne sera plus affiché",
+    "reveal_help": "Stockez-le dans un gestionnaire de secrets ou une variable CI. Révoquez-le à tout moment en cas de fuite.",
+    "copy": "Copier",
+    "copied": "Copié",
+    "ive_saved_it": "C'est enregistré",
+    "empty": "Aucun jeton. Créez-en un pour appeler l'API depuis des scripts ou la CI.",
+    "created_on": "Créé le {{date}}",
+    "last_used": "dernière utilisation : {{date}}",
+    "never_used": "jamais utilisé",
+    "revoke_confirm": "Révoquer ce jeton ? Tout ce qui l'utilise cessera de fonctionner immédiatement."
+  },
+  "requirements": {
+    "title": "Exigences",
+    "subtitle": "Exigences de première classe pour ce projet — liez-les à des cas pour construire une matrice de traçabilité.",
+    "new": "Nouvelle exigence",
+    "external_ref": "Référence externe",
+    "external_ref_help": "URL ou ID dans votre système d'exigences (story Jira, page Confluence, etc.).",
+    "req_title": "Titre",
+    "description": "Description",
+    "linked_cases": "Cas liés",
+    "empty": "Aucune exigence pour ce projet.",
+    "pick_for_case": "Lier une exigence",
+    "search_placeholder": "Rechercher par titre ou référence…",
+    "legacy_note": "Les anciennes exigences en texte libre de ce cas sont affichées ci-dessus. Sélectionnez une exigence de première classe ci-dessous pour la lier."
   },
   "company": {
     "settings_title": "Paramètres de l'entreprise",
@@ -368,6 +454,9 @@
   "locale": {
     "label": "Langue",
     "placeholder": "ex. fr, en, ar"
+  },
+  "requirement": {
+    "label": "Exigence"
   },
   "matrix": {
     "title": "Matrice de couverture",

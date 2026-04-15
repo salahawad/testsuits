@@ -1,28 +1,49 @@
-import { FormEvent, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Copy, Plus, Trash2 } from "lucide-react";
+import { z } from "zod";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { logger } from "../lib/logger";
+import { Field } from "../components/Field";
+import { useZodForm } from "../lib/useZodForm";
+import { emailField, nonEmpty, roleEnum } from "../lib/schemas";
+import { apiErrorMessage } from "../lib/apiError";
+import { Button } from "../components/ui/Button";
+import { PageHeader } from "../components/ui/PageHeader";
+import { Alert } from "../components/ui/Alert";
+import { Badge } from "../components/ui/Badge";
+import { useConfirm } from "../components/ui/ConfirmDialog";
 
 type InviteResult = {
   id: string;
   email: string;
   name: string;
-  role: "MANAGER" | "TESTER";
+  role: "ADMIN" | "MANAGER" | "TESTER" | "VIEWER";
   devToken?: string;
 };
+
+const inviteSchema = z.object({
+  name: nonEmpty("Name"),
+  email: emailField,
+  role: roleEnum,
+});
+type InviteValues = z.infer<typeof inviteSchema>;
 
 export function Team() {
   const { t } = useTranslation();
   const user = useAuth((s) => s.user);
   const qc = useQueryClient();
+  const confirm = useConfirm();
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ email: "", name: "", role: "TESTER" as "MANAGER" | "TESTER" });
-  const [err, setErr] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [lastInvite, setLastInvite] = useState<InviteResult | null>(null);
   const [copied, setCopied] = useState(false);
+
+  const form = useZodForm<InviteValues>(inviteSchema, {
+    defaultValues: { email: "", name: "", role: "TESTER" },
+  });
 
   const { data: users = [] } = useQuery({
     queryKey: ["users"],
@@ -30,15 +51,16 @@ export function Team() {
   });
 
   const invite = useMutation({
-    mutationFn: async () => (await api.post("/auth/invite", form)).data as InviteResult,
+    mutationFn: async (values: InviteValues) =>
+      (await api.post("/auth/invite", values, { silent: true })).data as InviteResult,
     onSuccess: (data) => {
       setLastInvite(data);
       setOpen(false);
-      setForm({ email: "", name: "", role: "TESTER" });
-      setErr(null);
+      form.reset({ email: "", name: "", role: "TESTER" });
+      setSubmitError(null);
       logger.info("teammate invite created");
     },
-    onError: (e: any) => setErr(e.response?.data?.error ?? "Invite failed"),
+    onError: (e: unknown) => setSubmitError(apiErrorMessage(e, "Invite failed")),
   });
 
   const remove = useMutation({
@@ -52,11 +74,12 @@ export function Team() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
   });
 
-  const isManager = user?.role === "MANAGER";
+  const isManager = user?.role === "MANAGER" || user?.role === "ADMIN";
 
-  function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    invite.mutate();
+  function closeForm() {
+    setOpen(false);
+    form.reset({ email: "", name: "", role: "TESTER" });
+    setSubmitError(null);
   }
 
   function inviteUrl(token: string) {
@@ -73,46 +96,49 @@ export function Team() {
 
   return (
     <div className="space-y-6">
-      <header className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">{t("team.title")}</h1>
-          <p className="text-sm text-slate-500">
-            {t("team.subtitle", { company: user?.company.name })}
-          </p>
-        </div>
-        {isManager && (
-          <button className="btn-primary" onClick={() => { setOpen(true); setLastInvite(null); }}>
-            <Plus size={16} /> {t("team.invite_member")}
-          </button>
-        )}
-      </header>
+      <PageHeader
+        title={t("team.title")}
+        subtitle={t("team.subtitle", { company: user?.company.name })}
+        actions={
+          isManager && (
+            <Button
+              variant="primary"
+              leftIcon={<Plus size={16} />}
+              onClick={() => { setOpen(true); setLastInvite(null); setSubmitError(null); }}
+            >
+              {t("team.invite_member")}
+            </Button>
+          )
+        }
+      />
 
       {open && (
-        <form onSubmit={onSubmit} className="card p-5 space-y-3">
+        <form
+          noValidate
+          onSubmit={form.handleSubmit((values) => invite.mutate(values))}
+          className="card p-5 space-y-3"
+        >
           <p className="text-sm text-slate-500">{t("team.invite_subtitle")}</p>
           <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="label">{t("auth.name")}</label>
-              <input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-            </div>
-            <div>
-              <label className="label">{t("auth.email")}</label>
-              <input type="email" className="input" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
-            </div>
+            <Field name="name" label={t("auth.name")} error={form.formState.errors.name?.message}>
+              <input className="input" autoComplete="name" {...form.register("name")} />
+            </Field>
+            <Field name="email" label={t("auth.email")} error={form.formState.errors.email?.message}>
+              <input type="email" className="input" autoComplete="email" {...form.register("email")} />
+            </Field>
           </div>
-          <div>
-            <label className="label">{t("team.role")}</label>
-            <select className="input" value={form.role} onChange={(e) => setForm({ ...form, role: e.target.value as any })}>
+          <Field name="role" label={t("team.role")} error={form.formState.errors.role?.message}>
+            <select className="input" {...form.register("role")}>
               <option value="TESTER">{t("team.tester")}</option>
               <option value="MANAGER">{t("team.manager")}</option>
             </select>
-          </div>
-          {err && <div className="text-sm text-red-600">{err}</div>}
+          </Field>
+          {submitError && <Alert>{submitError}</Alert>}
           <div className="flex gap-2 justify-end">
-            <button type="button" className="btn-secondary" onClick={() => setOpen(false)}>{t("common.cancel")}</button>
-            <button type="submit" className="btn-primary" disabled={invite.isPending}>
-              {invite.isPending ? t("common.please_wait") : t("team.invite_member")}
-            </button>
+            <Button type="button" onClick={closeForm}>{t("common.cancel")}</Button>
+            <Button type="submit" variant="primary" loading={invite.isPending}>
+              {t("team.invite_member")}
+            </Button>
           </div>
         </form>
       )}
@@ -132,13 +158,13 @@ export function Team() {
             </button>
           </div>
           <div className="flex justify-end">
-            <button className="btn-secondary" onClick={() => setLastInvite(null)}>{t("common.close")}</button>
+            <Button onClick={() => setLastInvite(null)}>{t("common.close")}</Button>
           </div>
         </div>
       )}
 
-      <div className="card divide-y divide-slate-100">
-        {users.map((u: any) => (
+      <div className="card divide-y divide-slate-100 dark:divide-slate-800">
+        {users.map((u: { id: string; name: string; email: string; role: string }) => (
           <div key={u.id} className="flex items-center justify-between px-5 py-3">
             <div>
               <div className="font-medium">{u.name}</div>
@@ -149,23 +175,34 @@ export function Team() {
                 <select
                   className="input text-xs py-1"
                   value={u.role}
+                  disabled={changeRole.isPending && changeRole.variables?.id === u.id}
                   onChange={(e) => changeRole.mutate({ id: u.id, role: e.target.value })}
                 >
                   <option value="TESTER">{t("team.tester")}</option>
                   <option value="MANAGER">{t("team.manager")}</option>
                 </select>
               ) : (
-                <span className={`badge ${u.role === "MANAGER" ? "bg-violet-100 text-violet-800" : "bg-slate-100 text-slate-700"}`}>
+                <Badge tone={u.role === "MANAGER" ? "violet" : "neutral"}>
                   {t(`team.${u.role.toLowerCase()}`)}
-                </span>
+                </Badge>
               )}
               {isManager && u.id !== user?.id && (
-                <button
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label={t("common.delete")}
                   className="text-slate-400 hover:text-red-600"
-                  onClick={() => { if (confirm(t("team.delete_confirm"))) remove.mutate(u.id); }}
+                  loading={remove.isPending && remove.variables === u.id}
+                  onClick={async () => {
+                    if (await confirm({
+                      title: t("team.delete_confirm"),
+                      confirmLabel: t("common.delete"),
+                      tone: "danger",
+                    })) remove.mutate(u.id);
+                  }}
                 >
-                  <Trash2 size={14} />
-                </button>
+                  {!(remove.isPending && remove.variables === u.id) && <Trash2 size={14} />}
+                </Button>
               )}
             </div>
           </div>

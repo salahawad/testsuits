@@ -5,8 +5,11 @@ import { useTranslation } from "react-i18next";
 import { Upload, Download, Trash2, ExternalLink, Bug, FileDown, Link as LinkIcon } from "lucide-react";
 import { api } from "../lib/api";
 import { execStatusColors, runStatusColors } from "../lib/status";
+import { Badge } from "../components/ui/Badge";
 import { Comments } from "../components/Comments";
 import { ActivityFeed } from "../components/ActivityFeed";
+import { PageLoader, Spinner } from "../components/Spinner";
+import { RichEditor } from "../components/RichEditor";
 
 const STATUSES = ["PENDING", "PASSED", "FAILED", "BLOCKED", "SKIPPED"] as const;
 
@@ -147,7 +150,7 @@ export function RunDetail() {
       });
   }
 
-  if (isLoading) return <div className="text-slate-500">{t("common.loading")}</div>;
+  if (isLoading) return <PageLoader />;
   if (!run) return null;
 
   const counts = STATUSES.reduce((acc, s) => ({ ...acc, [s]: 0 }), {} as Record<string, number>);
@@ -164,8 +167,8 @@ export function RunDetail() {
         <div>
           <div className="text-xs text-slate-500 mb-1 flex items-center gap-2 flex-wrap">
             <span>{run.project.name}</span>
-            {run.milestone && <span className="badge bg-violet-100 text-violet-700">{run.milestone.name}</span>}
-            {run.environment && <span className="badge bg-slate-100 text-slate-700">{run.environment}</span>}
+            {run.milestone && <Badge tone="violet">{run.milestone.name}</Badge>}
+            {run.environment && <Badge tone="neutral">{run.environment}</Badge>}
             {run.dueDate && <span>due {new Date(run.dueDate).toLocaleDateString()}</span>}
           </div>
           <h1 className="text-2xl font-bold">{run.name}</h1>
@@ -175,7 +178,14 @@ export function RunDetail() {
           <span className={`badge ${runStatusColors[run.status]}`}>{run.status.replace("_", " ")}</span>
           <button className="btn-secondary" onClick={exportCsv}><FileDown size={14} /> CSV</button>
           {run.status !== "COMPLETED" && (
-            <button className="btn-secondary" onClick={() => updateRun.mutate("COMPLETED")}>{t("runs.mark_completed")}</button>
+            <button
+              className="btn-secondary"
+              onClick={() => updateRun.mutate("COMPLETED")}
+              disabled={updateRun.isPending}
+            >
+              {updateRun.isPending && <Spinner size={14} className="text-slate-600" />}
+              {t("runs.mark_completed")}
+            </button>
           )}
         </div>
       </header>
@@ -185,15 +195,15 @@ export function RunDetail() {
           <span>{done} of {run.executions.length} executed</span>
           <span>{progress}%</span>
         </div>
-        <div className="h-2 bg-slate-100 rounded overflow-hidden">
-          <div className="h-full bg-brand-600" style={{ width: `${progress}%` }} />
+        <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded overflow-hidden">
+          <div className="h-full bg-brand-600 dark:bg-brand-500" style={{ width: `${progress}%` }} />
         </div>
         <div className="flex gap-2 mt-3 flex-wrap">
           {(["ALL", ...STATUSES] as const).map((s) => (
             <button
               key={s}
               onClick={() => setFilter(s)}
-              className={`badge transition ${filter === s ? "ring-2 ring-brand-500" : ""} ${s === "ALL" ? "bg-slate-100 text-slate-700" : execStatusColors[s]}`}
+              className={`badge transition ${filter === s ? "ring-2 ring-brand-500 dark:ring-brand-400" : ""} ${s === "ALL" ? "bg-slate-100 text-slate-700 dark:bg-slate-700/50 dark:text-slate-200" : execStatusColors[s]}`}
             >
               {s}{s !== "ALL" && `: ${counts[s]}`}
             </button>
@@ -202,12 +212,12 @@ export function RunDetail() {
       </div>
 
       <div className="grid md:grid-cols-[1fr_1.2fr] gap-6">
-        <div className="card divide-y divide-slate-100 max-h-[70vh] overflow-auto">
+        <div className="card divide-y divide-slate-100 dark:divide-slate-800 max-h-[70vh] overflow-auto">
           {filteredExecs.map((e: any) => (
             <button
               key={e.id}
               onClick={() => setSelected(e.id)}
-              className={`w-full text-left px-4 py-3 hover:bg-slate-50 flex items-center justify-between ${selected === e.id ? "bg-brand-50" : ""}`}
+              className={`w-full text-left px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center justify-between ${selected === e.id ? "bg-brand-50 dark:bg-brand-500/10" : ""}`}
             >
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium truncate">{e.case.title}</div>
@@ -235,6 +245,7 @@ export function RunDetail() {
                     <select
                       className="input text-xs py-1"
                       value={execution.assigneeId ?? ""}
+                      disabled={updateExec.isPending}
                       onChange={(e) => updateExec.mutate({ assigneeId: e.target.value || null })}
                     >
                       <option value="">{t("common.unassigned")}</option>
@@ -252,7 +263,7 @@ export function RunDetail() {
                   <div className="label">{t("cases.steps")}</div>
                   <ol className="space-y-2">
                     {(execution.case.steps as any[]).map((s, i) => (
-                      <li key={i} className="text-sm border-l-2 border-slate-200 pl-3">
+                      <li key={i} className="text-sm border-l-2 border-slate-200 dark:border-slate-700 pl-3">
                         <div><span className="font-semibold">{t("cases.action")}:</span> {s.action}</div>
                         <div className="text-slate-500"><span className="font-semibold">{t("cases.expected")}:</span> {s.expected}</div>
                       </li>
@@ -268,8 +279,9 @@ export function RunDetail() {
                     {STATUSES.filter((s) => s !== "PENDING").map((s) => (
                       <button
                         key={s}
-                        className={`btn ${execution.status === s ? (s === "PASSED" ? "bg-emerald-600 text-white" : s === "FAILED" ? "bg-red-600 text-white" : "bg-brand-600 text-white") : "bg-white border border-slate-300 text-slate-700 hover:bg-slate-50"}`}
+                        className={`btn ${execution.status === s ? (s === "PASSED" ? "bg-emerald-600 text-white" : s === "FAILED" ? "bg-red-600 text-white" : "bg-brand-600 text-white dark:bg-brand-500") : "bg-white border border-slate-300 dark:border-slate-700 text-slate-700 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-700 dark:hover:bg-slate-800"}`}
                         onClick={() => updateExec.mutate({ status: s })}
+                        disabled={updateExec.isPending}
                       >
                         {s}
                       </button>
@@ -279,17 +291,23 @@ export function RunDetail() {
 
                 <div>
                   <label className="label">{t("runs.actual_result")}</label>
-                  <textarea className="input" rows={2} value={actualResult}
-                    onChange={(e) => setActualResult(e.target.value)}
-                    placeholder={t("runs.actual_placeholder")} />
+                  <RichEditor
+                    value={actualResult}
+                    onChange={setActualResult}
+                    placeholder={t("runs.actual_placeholder")}
+                    minHeight={72}
+                  />
                 </div>
 
                 {execution.status === "FAILED" && (
                   <div>
                     <label className="label">{t("runs.why_failed")}</label>
-                    <textarea className="input" rows={3} value={failureReason}
-                      onChange={(e) => setFailureReason(e.target.value)}
-                      placeholder={t("runs.why_failed_placeholder")} />
+                    <RichEditor
+                      value={failureReason}
+                      onChange={setFailureReason}
+                      placeholder={t("runs.why_failed_placeholder")}
+                      minHeight={96}
+                    />
                   </div>
                 )}
 
@@ -308,6 +326,7 @@ export function RunDetail() {
 
                 <div className="flex justify-end">
                   <button className="btn-secondary" onClick={saveDetails} disabled={updateExec.isPending}>
+                    {updateExec.isPending && <Spinner size={14} className="text-slate-600" />}
                     {t("runs.save_details")}
                   </button>
                 </div>
@@ -323,7 +342,14 @@ export function RunDetail() {
                           className="btn-secondary text-brand-600">
                           {execution.jiraIssueKey} <ExternalLink size={12} />
                         </a>
-                        <button className="btn-secondary text-red-600" onClick={() => unlinkBug.mutate()}>{t("jira.unlink")}</button>
+                        <button
+                          className="btn-secondary text-red-600"
+                          onClick={() => unlinkBug.mutate()}
+                          disabled={unlinkBug.isPending}
+                        >
+                          {unlinkBug.isPending && <Spinner size={14} className="text-red-600" />}
+                          {t("jira.unlink")}
+                        </button>
                       </div>
                     ) : (
                       <button
@@ -331,7 +357,8 @@ export function RunDetail() {
                         disabled={!jiraReady || createBug.isPending}
                         onClick={() => createBug.mutate()}
                       >
-                        <Bug size={14} /> {t("jira.create_bug")}
+                        {createBug.isPending ? <Spinner size={14} className="text-white" /> : <Bug size={14} />}
+                        {t("jira.create_bug")}
                       </button>
                     )}
                   </div>
@@ -348,7 +375,8 @@ export function RunDetail() {
                         disabled={!linkKey || linkBug.isPending}
                         onClick={() => linkBug.mutate()}
                       >
-                        <LinkIcon size={14} /> {t("jira.link")}
+                        {linkBug.isPending ? <Spinner size={14} className="text-slate-600" /> : <LinkIcon size={14} />}
+                        {t("jira.link")}
                       </button>
                     </div>
                   )}
@@ -372,7 +400,7 @@ export function RunDetail() {
                 {execution.attachments.length === 0 ? (
                   <div className="text-sm text-slate-500">{t("runs.no_evidence")}</div>
                 ) : (
-                  <ul className="divide-y divide-slate-100">
+                  <ul className="divide-y divide-slate-100 dark:divide-slate-800">
                     {execution.attachments.map((a: any) => (
                       <li key={a.id} className="flex items-center justify-between py-2">
                         <div>
@@ -381,7 +409,15 @@ export function RunDetail() {
                         </div>
                         <div className="flex gap-2">
                           <button className="btn-secondary" onClick={() => onDownload(a.id)}><Download size={14} /></button>
-                          <button className="btn-secondary text-red-600" onClick={() => deleteAttachment.mutate(a.id)}><Trash2 size={14} /></button>
+                          <button
+                            className="btn-secondary text-red-600"
+                            onClick={() => deleteAttachment.mutate(a.id)}
+                            disabled={deleteAttachment.isPending && deleteAttachment.variables === a.id}
+                          >
+                            {deleteAttachment.isPending && deleteAttachment.variables === a.id
+                              ? <Spinner size={14} className="text-red-600" />
+                              : <Trash2 size={14} />}
+                          </button>
                         </div>
                       </li>
                     ))}

@@ -1,33 +1,37 @@
-import { FormEvent, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { z } from "zod";
 import { api } from "../lib/api";
+import { Field } from "../components/Field";
+import { useZodForm } from "../lib/useZodForm";
+import { emailField } from "../lib/schemas";
+import { apiErrorMessage } from "../lib/apiError";
+
+const schema = z.object({ email: emailField });
+type Values = z.infer<typeof schema>;
 
 export function ForgotPassword() {
   const { t } = useTranslation();
-  const [email, setEmail] = useState("");
   const [submitted, setSubmitted] = useState(false);
   const [devToken, setDevToken] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    setErr(null);
-    setLoading(true);
+  const form = useZodForm<Values>(schema, { defaultValues: { email: "" } });
+
+  async function onSubmit(values: Values) {
+    setSubmitError(null);
     try {
-      const { data } = await api.post("/auth/forgot", { email });
+      const { data } = await api.post("/auth/forgot", values, { silent: true });
       setSubmitted(true);
       if (data.devToken) setDevToken(data.devToken);
-    } catch (e: any) {
-      setErr(e.response?.data?.error ?? t("common.something_went_wrong"));
-    } finally {
-      setLoading(false);
+    } catch (e: unknown) {
+      setSubmitError(apiErrorMessage(e, t("common.something_went_wrong")));
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 px-4">
       <div className="card w-full max-w-md p-8 space-y-4">
         <div>
           <h1 className="text-2xl font-bold text-brand-600">{t("auth_reset.forgot_title")}</h1>
@@ -40,7 +44,7 @@ export function ForgotPassword() {
               {t("auth_reset.forgot_sent")}
             </div>
             {devToken && import.meta.env.DEV && (
-              <div className="rounded-md bg-amber-50 border border-amber-200 p-3 text-sm space-y-1">
+              <div className="rounded-md bg-amber-50 border border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/30 dark:text-amber-100 p-3 text-sm space-y-1">
                 <div className="font-semibold text-amber-900">{t("auth_reset.forgot_dev_link")}</div>
                 <a
                   href={`/reset/${devToken}`}
@@ -52,21 +56,13 @@ export function ForgotPassword() {
             )}
           </>
         ) : (
-          <form onSubmit={onSubmit} className="space-y-4">
-            <div>
-              <label className="label">{t("auth.email")}</label>
-              <input
-                type="email"
-                className="input"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                autoFocus
-              />
-            </div>
-            {err && <div className="text-sm text-red-600">{err}</div>}
-            <button type="submit" className="btn-primary w-full" disabled={loading}>
-              {loading ? t("common.please_wait") : t("auth_reset.forgot_submit")}
+          <form noValidate onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <Field name="email" label={t("auth.email")} error={form.formState.errors.email?.message}>
+              <input type="email" autoComplete="email" autoFocus className="input" {...form.register("email")} />
+            </Field>
+            {submitError && <div role="alert" className="text-sm text-red-600">{submitError}</div>}
+            <button type="submit" className="btn-primary w-full" disabled={form.formState.isSubmitting}>
+              {form.formState.isSubmitting ? t("common.please_wait") : t("auth_reset.forgot_submit")}
             </button>
           </form>
         )}

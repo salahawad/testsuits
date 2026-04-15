@@ -101,6 +101,7 @@ If you're unsure, err toward updating. One extra line in the README is cheaper t
 - **Prisma migrations**: schema changes go through `prisma db push` in dev and proper migrations in prod.
 - **Don't leak secrets**: never log or commit API tokens, Jira credentials, DB URLs with passwords, or JWT secrets.
 - **Read before writing**: when editing an unfamiliar area, read neighbouring code (routes, components) to match conventions.
+- **Never auto-commit or auto-push.** Do not run `git commit`, `git push`, or any destructive git operation unless the user has explicitly asked for it in *this* turn. A prior "commit and push" instruction does **not** authorise future commits — every commit needs its own green light. When work is ready, summarise the diff and ask; don't volunteer.
 
 ## 5. When in doubt
 

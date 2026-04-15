@@ -9,6 +9,9 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "../lib/auth";
 import { SUPPORTED_LANGUAGES } from "../i18n";
 import { logger } from "../lib/logger";
+import { Logo } from "./Logo";
+import { Badge } from "./ui/Badge";
+import { ThemeToggle } from "./ThemeToggle";
 import clsx from "clsx";
 
 const COLLAPSE_KEY = "ts_nav_collapsed";
@@ -60,18 +63,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <aside
         className={clsx(
           "border-r border-slate-200 bg-white flex flex-col transition-[width] duration-200",
+          "dark:border-slate-800 dark:bg-slate-900",
           collapsed ? "w-16" : "w-64",
         )}
       >
-        <div className="h-14 flex items-center justify-between px-3 border-b border-slate-200">
+        <div className="h-14 flex items-center justify-between px-3 border-b border-slate-200 dark:border-slate-800">
           {!collapsed && (
-            <Link to="/" className="text-lg font-bold text-brand-600 px-2">
-              {t("app.name")}
+            <Link to="/" className="px-1" aria-label={t("app.name")}>
+              <Logo size={26} withWordmark />
             </Link>
           )}
           <button
             onClick={() => setCollapsed((v) => !v)}
-            className="p-1.5 rounded hover:bg-slate-100 text-slate-500"
+            className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400"
             aria-label={collapsed ? "Expand" : "Collapse"}
             title={collapsed ? "Expand" : "Collapse"}
           >
@@ -82,7 +86,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         {user?.company && (
           <div
             className={clsx(
-              "border-b border-slate-100 px-3 py-3 flex items-center gap-3",
+              "border-b border-slate-100 dark:border-slate-800 px-3 py-3 flex items-center gap-3",
               collapsed && "justify-center",
             )}
             title={user.company.name}
@@ -110,7 +114,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 clsx(
                   "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition",
                   collapsed && "justify-center px-2",
-                  isActive ? "bg-brand-50 text-brand-700" : "text-slate-600 hover:bg-slate-50",
+                  isActive
+                    ? "bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300"
+                    : "text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800",
                 )
               }
             >
@@ -134,7 +140,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 clsx(
                   "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition",
                   collapsed && "justify-center px-2",
-                  isActive ? "bg-brand-50 text-brand-700" : "text-slate-600 hover:bg-slate-50",
+                  isActive
+                    ? "bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300"
+                    : "text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800",
                 )
               }
             >
@@ -144,12 +152,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
 
-        <div className="border-t border-slate-200 p-2 space-y-2">
+        <div className="border-t border-slate-200 dark:border-slate-800 p-2 space-y-2">
+          <ThemeToggle collapsed={collapsed} />
           {!collapsed ? (
-            <label className="flex items-center gap-2 text-xs text-slate-600 px-2">
+            <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 px-2">
               <Globe size={14} />
               <select
-                className="bg-transparent border border-slate-200 rounded px-2 py-1 text-xs flex-1"
+                className="bg-transparent border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-xs flex-1 dark:text-slate-200"
                 value={i18n.resolvedLanguage}
                 onChange={(e) => changeLang(e.target.value)}
               >
@@ -161,7 +170,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           ) : (
             <button
               onClick={() => changeLang(i18n.resolvedLanguage === "fr" ? "en" : "fr")}
-              className="w-full flex items-center justify-center p-2 rounded hover:bg-slate-100 text-slate-500"
+              className="w-full flex items-center justify-center p-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400"
               title={t("nav.language")}
             >
               <Globe size={16} />
@@ -174,16 +183,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
               <div className="text-sm font-medium flex items-center gap-2 mt-0.5">
                 <span className="truncate flex-1">{user?.name}</span>
                 {user?.role && (
-                  <span
-                    className={clsx(
-                      "badge text-[10px]",
-                      user.role === "MANAGER"
-                        ? "bg-violet-100 text-violet-800"
-                        : "bg-slate-100 text-slate-700",
-                    )}
-                  >
+                  <Badge tone={user.role === "MANAGER" ? "violet" : "neutral"} size="xs">
                     {t(`team.${user.role.toLowerCase()}`)}
-                  </span>
+                  </Badge>
                 )}
               </div>
               <button
@@ -204,7 +206,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 logout();
                 navigate("/login");
               }}
-              className="w-full flex items-center justify-center p-2 rounded hover:bg-slate-100 text-slate-500"
+              className="w-full flex items-center justify-center p-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400"
               title={t("nav.logout")}
             >
               <LogOut size={16} />

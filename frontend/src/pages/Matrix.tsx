@@ -66,7 +66,7 @@ export function Matrix() {
               <button
                 key={d}
                 onClick={() => selectDimension(d)}
-                className={`btn ${dimension === d ? "bg-brand-600 text-white" : "bg-white border border-slate-300 text-slate-700 hover:bg-slate-50"}`}
+                className={`btn ${dimension === d ? "bg-brand-600 text-white dark:bg-brand-500" : "bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-700 dark:hover:bg-slate-800"}`}
               >
                 {t(`${d}.label`)}
               </button>
@@ -84,7 +84,7 @@ export function Matrix() {
       {projectId && matrix && matrix.buckets.length > 0 && (
         <div className="card overflow-auto">
           <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 border-b border-slate-200">
+            <thead className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
               <tr>
                 <th className="text-left px-4 py-2 font-semibold">{t("cases.title")}</th>
                 <th className="text-left px-2 py-2 font-semibold">{t("test_level.label")}</th>
@@ -95,7 +95,7 @@ export function Matrix() {
             </thead>
             <tbody>
               {matrix.rows.map((row: any) => (
-                <tr key={row.caseId} className="border-b border-slate-100 hover:bg-slate-50">
+                <tr key={row.caseId} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60">
                   <td className="px-4 py-2">
                     <Link to={`/cases/${row.caseId}`} className="font-medium hover:underline">{row.title}</Link>
                     <div className="text-xs text-slate-500">{row.suite.name}</div>
@@ -110,10 +110,10 @@ export function Matrix() {
                       {cell ? (
                         cell.runId ? (
                           <Link to={`/runs/${cell.runId}`} title={cell.runName}>
-                            <span className={`badge ${execStatusColors[cell.status as keyof typeof execStatusColors] ?? "bg-slate-100 text-slate-500"}`}>{cell.status}</span>
+                            <span className={`badge ${execStatusColors[cell.status as keyof typeof execStatusColors] ?? "bg-slate-100 text-slate-500 dark:bg-slate-700/50 dark:text-slate-400"}`}>{cell.status}</span>
                           </Link>
                         ) : (
-                          <span className="badge bg-slate-100 text-slate-500" title="Linked to requirement but never executed">{cell.status}</span>
+                          <span className="badge bg-slate-100 text-slate-500 dark:bg-slate-700/50 dark:text-slate-400" title="Linked to requirement but never executed">{cell.status}</span>
                         )
                       ) : (
                         <span className="text-slate-300">—</span>

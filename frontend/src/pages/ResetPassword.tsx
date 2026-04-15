@@ -1,39 +1,46 @@
-import { FormEvent, useState } from "react";
+import { useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { z } from "zod";
 import { api } from "../lib/api";
+import { Field } from "../components/Field";
+import { useZodForm } from "../lib/useZodForm";
+import { passwordPolicy } from "../lib/schemas";
+import { apiErrorMessage } from "../lib/apiError";
+
+const schema = z
+  .object({
+    password: passwordPolicy,
+    confirm: z.string().min(1, "Please confirm your password"),
+  })
+  .refine((v) => v.password === v.confirm, {
+    path: ["confirm"],
+    message: "Passwords don't match",
+  });
+type Values = z.infer<typeof schema>;
 
 export function ResetPassword() {
   const { t } = useTranslation();
   const { token } = useParams<{ token: string }>();
   const navigate = useNavigate();
-  const [password, setPassword] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
-  async function onSubmit(e: FormEvent) {
-    e.preventDefault();
-    setErr(null);
-    if (password !== confirm) {
-      setErr(t("auth.passwords_dont_match", { defaultValue: "Passwords don't match" }) as string);
-      return;
-    }
-    setLoading(true);
+  const form = useZodForm<Values>(schema, { defaultValues: { password: "", confirm: "" } });
+
+  async function onSubmit(values: Values) {
+    setSubmitError(null);
     try {
-      await api.post("/auth/reset", { token, password });
+      await api.post("/auth/reset", { token, password: values.password }, { silent: true });
       setDone(true);
       setTimeout(() => navigate("/login"), 1500);
-    } catch (e: any) {
-      setErr(e.response?.data?.error ?? t("auth_reset.reset_invalid"));
-    } finally {
-      setLoading(false);
+    } catch (e: unknown) {
+      setSubmitError(apiErrorMessage(e, t("auth_reset.reset_invalid")));
     }
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 px-4">
       <div className="card w-full max-w-md p-8 space-y-4">
         <div>
           <h1 className="text-2xl font-bold text-brand-600">{t("auth_reset.reset_title")}</h1>
@@ -45,33 +52,20 @@ export function ResetPassword() {
             {t("auth_reset.reset_success")}
           </div>
         ) : (
-          <form onSubmit={onSubmit} className="space-y-4">
-            <div>
-              <label className="label">{t("auth.password")}</label>
-              <input
-                type="password"
-                className="input"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                minLength={6}
-                autoFocus
-              />
-            </div>
-            <div>
-              <label className="label">{t("auth.confirm_password", { defaultValue: "Confirm password" })}</label>
-              <input
-                type="password"
-                className="input"
-                value={confirm}
-                onChange={(e) => setConfirm(e.target.value)}
-                required
-                minLength={6}
-              />
-            </div>
-            {err && <div className="text-sm text-red-600">{err}</div>}
-            <button type="submit" className="btn-primary w-full" disabled={loading}>
-              {loading ? t("common.please_wait") : t("auth_reset.reset_submit")}
+          <form noValidate onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            <Field name="password" label={t("auth.password")} error={form.formState.errors.password?.message}>
+              <input type="password" autoComplete="new-password" autoFocus className="input" {...form.register("password")} />
+            </Field>
+            <Field
+              name="confirm"
+              label={t("auth.confirm_password", { defaultValue: "Confirm password" })}
+              error={form.formState.errors.confirm?.message}
+            >
+              <input type="password" autoComplete="new-password" className="input" {...form.register("confirm")} />
+            </Field>
+            {submitError && <div role="alert" className="text-sm text-red-600">{submitError}</div>}
+            <button type="submit" className="btn-primary w-full" disabled={form.formState.isSubmitting}>
+              {form.formState.isSubmitting ? t("common.please_wait") : t("auth_reset.reset_submit")}
             </button>
           </form>
         )}

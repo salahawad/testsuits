@@ -79,7 +79,7 @@ export function CustomFieldsEditor({ projectId, canEdit }: { projectId: string; 
 
       <div className="space-y-3">
         {draft.map((f, i) => (
-          <div key={i} className="border border-slate-200 rounded p-3 space-y-2">
+          <div key={i} className="border border-slate-200 dark:border-slate-700 rounded p-3 space-y-2">
             <div className="grid grid-cols-4 gap-2">
               <div className="col-span-2">
                 <label className="label">{t("custom_fields.label")}</label>

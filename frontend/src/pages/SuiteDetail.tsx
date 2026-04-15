@@ -1,10 +1,26 @@
-import { FormEvent, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, FolderTree, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { z } from "zod";
 import { api } from "../lib/api";
-import { priorityColors } from "../lib/status";
+import { priorityTone } from "../lib/status";
+import { PageLoader, Spinner } from "../components/Spinner";
+import { Badge } from "../components/ui/Badge";
+import { Field } from "../components/Field";
+import { useZodForm } from "../lib/useZodForm";
+import { nonEmpty } from "../lib/schemas";
+import { apiErrorMessage } from "../lib/apiError";
+
+const suiteSchema = z.object({ name: nonEmpty("Suite name") });
+type SuiteValues = z.infer<typeof suiteSchema>;
+
+const caseSchema = z.object({
+  title: nonEmpty("Case title"),
+  priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]),
+});
+type CaseValues = z.infer<typeof caseSchema>;
 
 export function SuiteDetail() {
   const { t } = useTranslation();
@@ -12,9 +28,13 @@ export function SuiteDetail() {
   const qc = useQueryClient();
   const [openSuite, setOpenSuite] = useState(false);
   const [openCase, setOpenCase] = useState(false);
-  const [suiteName, setSuiteName] = useState("");
-  const [caseTitle, setCaseTitle] = useState("");
-  const [casePriority, setCasePriority] = useState("MEDIUM");
+  const [suiteError, setSuiteError] = useState<string | null>(null);
+  const [caseError, setCaseError] = useState<string | null>(null);
+
+  const suiteForm = useZodForm<SuiteValues>(suiteSchema, { defaultValues: { name: "" } });
+  const caseForm = useZodForm<CaseValues>(caseSchema, {
+    defaultValues: { title: "", priority: "MEDIUM" },
+  });
 
   const { data: suite, isLoading } = useQuery({
     queryKey: ["suite", id],
@@ -23,25 +43,50 @@ export function SuiteDetail() {
   });
 
   const createSuite = useMutation({
-    mutationFn: async () => (await api.post("/suites", { projectId: suite.projectId, parentId: id, name: suiteName })).data,
+    mutationFn: async (values: SuiteValues) =>
+      (await api.post(
+        "/suites",
+        { projectId: suite.projectId, parentId: id, name: values.name },
+        { silent: true },
+      )).data,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["suite", id] });
       setOpenSuite(false);
-      setSuiteName("");
+      suiteForm.reset({ name: "" });
+      setSuiteError(null);
     },
+    onError: (e: unknown) => setSuiteError(apiErrorMessage(e, "Create failed")),
   });
 
   const createCase = useMutation({
-    mutationFn: async () =>
-      (await api.post("/cases", { suiteId: id, title: caseTitle, priority: casePriority })).data,
+    mutationFn: async (values: CaseValues) =>
+      (await api.post(
+        "/cases",
+        { suiteId: id, title: values.title, priority: values.priority },
+        { silent: true },
+      )).data,
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["suite", id] });
       setOpenCase(false);
-      setCaseTitle("");
+      caseForm.reset({ title: "", priority: "MEDIUM" });
+      setCaseError(null);
     },
+    onError: (e: unknown) => setCaseError(apiErrorMessage(e, "Create failed")),
   });
 
-  if (isLoading) return <div className="text-slate-500">{t("common.loading")}</div>;
+  function closeSuiteForm() {
+    setOpenSuite(false);
+    suiteForm.reset({ name: "" });
+    setSuiteError(null);
+  }
+
+  function closeCaseForm() {
+    setOpenCase(false);
+    caseForm.reset({ title: "", priority: "MEDIUM" });
+    setCaseError(null);
+  }
+
+  if (isLoading) return <PageLoader />;
   if (!suite) return null;
 
   return (
@@ -60,36 +105,61 @@ export function SuiteDetail() {
       </div>
 
       {openSuite && (
-        <form onSubmit={(e: FormEvent) => { e.preventDefault(); createSuite.mutate(); }} className="card p-5 space-y-3">
-          <div>
-            <label className="label">{t("projects.suite_name")}</label>
-            <input className="input" value={suiteName} onChange={(e) => setSuiteName(e.target.value)} required />
-          </div>
+        <form
+          noValidate
+          onSubmit={suiteForm.handleSubmit((values) => createSuite.mutate(values))}
+          className="card p-5 space-y-3"
+        >
+          <Field
+            name="name"
+            label={t("projects.suite_name")}
+            error={suiteForm.formState.errors.name?.message}
+          >
+            <input className="input" autoFocus {...suiteForm.register("name")} />
+          </Field>
+          {suiteError && <div role="alert" className="text-sm text-red-600">{suiteError}</div>}
           <div className="flex gap-2 justify-end">
-            <button type="button" className="btn-secondary" onClick={() => setOpenSuite(false)}>{t("common.cancel")}</button>
-            <button type="submit" className="btn-primary">{t("common.create")}</button>
+            <button type="button" className="btn-secondary" onClick={closeSuiteForm}>{t("common.cancel")}</button>
+            <button type="submit" className="btn-primary" disabled={createSuite.isPending}>
+              {createSuite.isPending && <Spinner size={14} className="text-white" />}
+              {createSuite.isPending ? t("common.please_wait") : t("common.create")}
+            </button>
           </div>
         </form>
       )}
 
       {openCase && (
-        <form onSubmit={(e: FormEvent) => { e.preventDefault(); createCase.mutate(); }} className="card p-5 space-y-3">
-          <div>
-            <label className="label">{t("suites.case_title")}</label>
-            <input className="input" value={caseTitle} onChange={(e) => setCaseTitle(e.target.value)} required />
-          </div>
-          <div>
-            <label className="label">{t("suites.priority")}</label>
-            <select className="input" value={casePriority} onChange={(e) => setCasePriority(e.target.value)}>
+        <form
+          noValidate
+          onSubmit={caseForm.handleSubmit((values) => createCase.mutate(values))}
+          className="card p-5 space-y-3"
+        >
+          <Field
+            name="title"
+            label={t("suites.case_title")}
+            error={caseForm.formState.errors.title?.message}
+          >
+            <input className="input" autoFocus {...caseForm.register("title")} />
+          </Field>
+          <Field
+            name="priority"
+            label={t("suites.priority")}
+            error={caseForm.formState.errors.priority?.message}
+          >
+            <select className="input" {...caseForm.register("priority")}>
               <option value="LOW">LOW</option>
               <option value="MEDIUM">MEDIUM</option>
               <option value="HIGH">HIGH</option>
               <option value="CRITICAL">CRITICAL</option>
             </select>
-          </div>
+          </Field>
+          {caseError && <div role="alert" className="text-sm text-red-600">{caseError}</div>}
           <div className="flex gap-2 justify-end">
-            <button type="button" className="btn-secondary" onClick={() => setOpenCase(false)}>{t("common.cancel")}</button>
-            <button type="submit" className="btn-primary">{t("common.create")}</button>
+            <button type="button" className="btn-secondary" onClick={closeCaseForm}>{t("common.cancel")}</button>
+            <button type="submit" className="btn-primary" disabled={createCase.isPending}>
+              {createCase.isPending && <Spinner size={14} className="text-white" />}
+              {createCase.isPending ? t("common.please_wait") : t("common.create")}
+            </button>
           </div>
         </form>
       )}
@@ -116,18 +186,18 @@ export function SuiteDetail() {
         {suite.cases.length === 0 ? (
           <div className="card p-10 text-center text-slate-500">{t("suites.no_cases")}</div>
         ) : (
-          <div className="card divide-y divide-slate-100">
+          <div className="card divide-y divide-slate-100 dark:divide-slate-800">
             {suite.cases.map((c: any) => (
-              <Link key={c.id} to={`/cases/${c.id}`} className="flex items-center justify-between px-5 py-3 hover:bg-slate-50">
+              <Link key={c.id} to={`/cases/${c.id}`} className="flex items-center justify-between px-5 py-3 hover:bg-slate-50 dark:hover:bg-slate-800">
                 <div className="flex-1">
                   <div className="font-medium">{c.title}</div>
                   {c.tags.length > 0 && (
                     <div className="flex gap-1 mt-1">
-                      {c.tags.map((t: string) => <span key={t} className="badge bg-slate-100 text-slate-700">{t}</span>)}
+                      {c.tags.map((t: string) => <Badge key={t} tone="neutral">{t}</Badge>)}
                     </div>
                   )}
                 </div>
-                <span className={`badge ${priorityColors[c.priority]}`}>{c.priority}</span>
+                <Badge tone={priorityTone(c.priority)}>{c.priority}</Badge>
               </Link>
             ))}
           </div>

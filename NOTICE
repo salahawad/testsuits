@@ -1,0 +1,12 @@
+TestSuits — Modern Test Management System
+Copyright (c) 2026 Salah AWAD. All rights reserved.
+
+This product is licensed under the Business Source License 1.1 (see LICENSE).
+On 2030-04-15 the Change Date takes effect and this product will be made
+available under the Apache License, Version 2.0.
+
+Third-party components retain their own licenses; see the `node_modules`
+directory in each app (backend/, frontend/) for their respective NOTICE /
+LICENSE files. This product depends on Docker images (PostgreSQL, MinIO,
+Mailpit) pulled at runtime; those images are governed by their own licenses
+and are not redistributed by this repository.

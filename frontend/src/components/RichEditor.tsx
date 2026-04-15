@@ -74,7 +74,7 @@ export function RichEditor({ value, onChange, placeholder, minHeight = 72, inlin
     content: value || "",
     editorProps: {
       attributes: {
-        class: `prose-editor tiptap-content w-full rounded border border-slate-200 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-brand-400`,
+        class: `prose-editor tiptap-content w-full rounded border border-slate-200 bg-white px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 focus:border-brand-400 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:focus:ring-brand-500 dark:focus:border-brand-500`,
         style: `min-height:${minHeight}px`,
         ...(placeholder ? { "data-placeholder": placeholder } : {}),
       },
@@ -125,7 +125,7 @@ function Toolbar({ editor, inline }: { editor: Editor; inline: boolean }) {
   }
 
   const btn = (active: boolean) =>
-    `px-1.5 py-0.5 rounded text-slate-600 hover:bg-slate-100 ${active ? "bg-slate-200 text-slate-900" : ""}`;
+    `px-1.5 py-0.5 rounded text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800 ${active ? "bg-slate-200 text-slate-900 dark:bg-slate-700 dark:text-slate-100" : ""}`;
 
   return (
     <div className="flex flex-wrap gap-0.5 text-xs">
@@ -143,7 +143,7 @@ function Toolbar({ editor, inline }: { editor: Editor; inline: boolean }) {
       </button>
       {!inline && (
         <>
-          <span className="w-px bg-slate-200 mx-0.5" aria-hidden />
+          <span className="w-px bg-slate-200 dark:bg-slate-700 mx-0.5" aria-hidden />
           <button type="button" aria-label={t("editor.bullet_list")} className={btn(editor.isActive("bulletList"))}
             onClick={() => editor.chain().focus().toggleBulletList().run()} title={t("editor.bullet_list")}>
             <List size={12} />
@@ -154,7 +154,7 @@ function Toolbar({ editor, inline }: { editor: Editor; inline: boolean }) {
           </button>
         </>
       )}
-      <span className="w-px bg-slate-200 mx-0.5" aria-hidden />
+      <span className="w-px bg-slate-200 dark:bg-slate-700 mx-0.5" aria-hidden />
       <button type="button" aria-label={t("editor.link")} className={btn(editor.isActive("link"))}
         onClick={toggleLink} title={t("editor.link")}>
         <LinkIcon size={12} />

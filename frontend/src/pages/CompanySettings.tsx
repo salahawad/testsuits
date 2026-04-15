@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { logger } from "../lib/logger";
+import { Spinner } from "../components/Spinner";
 
 type CompanyJiraConfig = {
   baseUrl: string;
@@ -103,7 +104,7 @@ export function CompanySettings() {
         <p className="text-sm text-slate-500">{t("company.settings_subtitle")}</p>
       </header>
 
-      <form onSubmit={onSubmit} className="card p-5 space-y-5">
+      <form noValidate onSubmit={onSubmit} className="card p-5 space-y-5">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold">{t("jira.integration")}</h2>
           <label className="flex items-center gap-2 text-sm">
@@ -112,7 +113,7 @@ export function CompanySettings() {
           </label>
         </div>
 
-        <p className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded p-3">
+        <p className="text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded p-3">
           {t("jira.company_level_hint")}
         </p>
 
@@ -155,7 +156,7 @@ export function CompanySettings() {
           </p>
         </section>
 
-        <section className="space-y-3 pt-4 border-t border-slate-100">
+        <section className="space-y-3 pt-4 border-t border-slate-100 dark:border-slate-800">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-slate-700">{t("jira.issue_template")}</h3>
             <button type="button" className="btn-secondary text-xs" onClick={useDefaultTemplates}>{t("jira.use_defaults")}</button>
@@ -177,15 +178,33 @@ export function CompanySettings() {
         {err && <div className="text-sm text-red-600">{err}</div>}
         {testResult && <div className="text-sm">{testResult}</div>}
 
-        <div className="flex gap-2 justify-end pt-4 border-t border-slate-100">
+        <div className="flex gap-2 justify-end pt-4 border-t border-slate-100 dark:border-slate-800">
           {isManager && config && (
-            <button type="button" className="btn-secondary text-red-600"
-              onClick={() => { if (confirm(t("jira.remove_confirm"))) remove.mutate(); }}>
+            <button
+              type="button"
+              className="btn-secondary text-red-600"
+              disabled={remove.isPending}
+              onClick={() => { if (confirm(t("jira.remove_confirm"))) remove.mutate(); }}
+            >
+              {remove.isPending && <Spinner size={14} className="text-red-600" />}
               {t("jira.remove")}
             </button>
           )}
-          <button type="button" className="btn-secondary" disabled={!config} onClick={() => test.mutate()}>{t("jira.test_connection")}</button>
-          {isManager && <button type="submit" className="btn-primary" disabled={save.isPending}>{t("common.save")}</button>}
+          <button
+            type="button"
+            className="btn-secondary"
+            disabled={!config || test.isPending}
+            onClick={() => test.mutate()}
+          >
+            {test.isPending && <Spinner size={14} className="text-slate-600" />}
+            {t("jira.test_connection")}
+          </button>
+          {isManager && (
+            <button type="submit" className="btn-primary" disabled={save.isPending}>
+              {save.isPending && <Spinner size={14} className="text-white" />}
+              {t("common.save")}
+            </button>
+          )}
         </div>
       </form>
     </div>

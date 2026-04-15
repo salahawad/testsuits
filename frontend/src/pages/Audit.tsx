@@ -107,7 +107,7 @@ export function Audit() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead className="text-xs uppercase text-slate-500 bg-slate-50">
+              <thead className="text-xs uppercase text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50">
                 <tr>
                   <th className="px-4 py-2 text-left">{t("audit.when")}</th>
                   <th className="px-4 py-2 text-left">{t("audit.user")}</th>
@@ -116,12 +116,12 @@ export function Audit() {
                   <th className="px-4 py-2 text-left">{t("audit.entity")}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                 {rows.map((r) => (
                   <tr key={r.id}>
                     <td className="px-4 py-2 whitespace-nowrap text-xs text-slate-500">{new Date(r.createdAt).toLocaleString()}</td>
                     <td className="px-4 py-2">{r.user?.name ?? "—"}<div className="text-xs text-slate-500">{r.user?.email ?? ""}</div></td>
-                    <td className="px-4 py-2"><span className="badge bg-slate-100 text-slate-700">{r.action}</span></td>
+                    <td className="px-4 py-2"><span className="badge bg-slate-100 text-slate-700 dark:bg-slate-700/50 dark:text-slate-200">{r.action}</span></td>
                     <td className="px-4 py-2">{r.project ? `${r.project.key} · ${r.project.name}` : "—"}</td>
                     <td className="px-4 py-2 text-xs text-slate-500 font-mono truncate max-w-[20ch]">{r.entityType}:{r.entityId}</td>
                   </tr>
@@ -130,7 +130,7 @@ export function Audit() {
             </table>
           </div>
         )}
-        <div className="px-4 py-2 text-xs text-slate-500 border-t border-slate-100">
+        <div className="px-4 py-2 text-xs text-slate-500 border-t border-slate-100 dark:border-slate-800">
           {t("audit.rows_count", { count: rows.length })}
         </div>
       </div>
