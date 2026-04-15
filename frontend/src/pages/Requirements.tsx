@@ -88,7 +88,7 @@ export function Requirements() {
         </Link>
       </div>
 
-      <header className="flex items-center justify-between">
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">{t("requirements.title")}</h1>
           <p className="text-sm text-slate-500">{t("requirements.subtitle")}</p>

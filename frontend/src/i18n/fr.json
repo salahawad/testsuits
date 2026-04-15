@@ -53,7 +53,8 @@
     "logout": "Déconnexion",
     "company": "Entreprise",
     "admin": "Administration",
-    "language": "Langue"
+    "language": "Langue",
+    "open_menu": "Ouvrir le menu"
   },
   "auth": {
     "email": "E-mail",

@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { Link, NavLink, useNavigate } from "react-router-dom";
+import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, FolderKanban, PlayCircle, Grid3x3, Users,
   Building2, LogOut, ChevronLeft, ChevronRight, Globe, KeyRound,
-  ShieldCheck, FileSearch,
+  ShieldCheck, FileSearch, Menu, X,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../lib/auth";
@@ -19,12 +19,35 @@ const COLLAPSE_KEY = "ts_nav_collapsed";
 export function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const { t, i18n } = useTranslation();
 
+  // Desktop: collapsed narrow rail vs wide sidebar. Persisted.
   const [collapsed, setCollapsed] = useState<boolean>(() => localStorage.getItem(COLLAPSE_KEY) === "1");
   useEffect(() => {
     localStorage.setItem(COLLAPSE_KEY, collapsed ? "1" : "0");
   }, [collapsed]);
+
+  // Mobile: off-canvas drawer toggled by the hamburger. Not persisted — always
+  // starts closed on page load and closes whenever the route changes or the
+  // viewport crosses back to desktop.
+  const [mobileOpen, setMobileOpen] = useState(false);
+  useEffect(() => { setMobileOpen(false); }, [location.pathname]);
+  useEffect(() => {
+    // Close the drawer if the window grows past the md breakpoint; otherwise
+    // a user resizing from phone → tablet ends up with a stuck overlay.
+    const mq = window.matchMedia("(min-width: 768px)");
+    const onChange = (e: MediaQueryListEvent) => { if (e.matches) setMobileOpen(false); };
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  // Close on Escape while the drawer is open.
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMobileOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mobileOpen]);
 
   const isManager = user?.role === "MANAGER" || user?.role === "ADMIN";
   const isAdmin = user?.role === "ADMIN";
@@ -58,24 +81,73 @@ export function Layout({ children }: { children: React.ReactNode }) {
     .join("")
     .toUpperCase() ?? "?";
 
+  // The sidebar renders in two modes: fixed off-canvas on mobile, static on
+  // desktop. `asideMobileVisible` controls only the mobile transform; desktop
+  // collapsing is handled by the existing `collapsed` state + width classes.
+  const asideBase =
+    "bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col";
+
   return (
-    <div className="flex h-screen">
+    <div className="md:flex md:h-screen">
+      {/* Mobile top app bar. md:hidden so desktop is untouched. */}
+      <header className="md:hidden sticky top-0 z-30 h-14 flex items-center justify-between px-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
+        <button
+          type="button"
+          onClick={() => setMobileOpen(true)}
+          aria-label={t("nav.open_menu")}
+          className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200"
+        >
+          <Menu size={20} />
+        </button>
+        <Link to="/" aria-label={t("app.name")}>
+          <Logo size={24} withWordmark />
+        </Link>
+        <div className="w-8" aria-hidden /> {/* symmetry */}
+      </header>
+
+      {/* Backdrop — only rendered on mobile when the drawer is open. */}
+      {mobileOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-30 bg-slate-900/60 backdrop-blur-sm"
+          onClick={() => setMobileOpen(false)}
+          aria-hidden
+        />
+      )}
+
       <aside
         className={clsx(
-          "border-r border-slate-200 bg-white flex flex-col transition-[width] duration-200",
-          "dark:border-slate-800 dark:bg-slate-900",
-          collapsed ? "w-16" : "w-64",
+          asideBase,
+          // Mobile: off-canvas, fixed, full-height, transforms in/out.
+          "fixed inset-y-0 left-0 z-40 w-64 max-w-[85vw] transition-transform duration-200",
+          mobileOpen ? "translate-x-0" : "-translate-x-full",
+          // Desktop: static, reset transforms + fixed positioning, collapse/expand width.
+          "md:static md:translate-x-0 md:max-w-none md:transition-[width]",
+          collapsed ? "md:w-16" : "md:w-64",
         )}
+        aria-label={t("nav.admin")}
       >
         <div className="h-14 flex items-center justify-between px-3 border-b border-slate-200 dark:border-slate-800">
-          {!collapsed && (
-            <Link to="/" className="px-1" aria-label={t("app.name")}>
-              <Logo size={26} withWordmark />
-            </Link>
-          )}
+          {/* Mobile: show logo + close. Desktop: honour collapsed. */}
+          <Link to="/" className="px-1 md:hidden" aria-label={t("app.name")}>
+            <Logo size={26} withWordmark />
+          </Link>
+          <Link
+            to="/"
+            className={clsx("px-1 hidden md:block", collapsed && "md:hidden")}
+            aria-label={t("app.name")}
+          >
+            <Logo size={26} withWordmark />
+          </Link>
+          <button
+            onClick={() => setMobileOpen(false)}
+            className="md:hidden p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400"
+            aria-label={t("common.close")}
+          >
+            <X size={18} />
+          </button>
           <button
             onClick={() => setCollapsed((v) => !v)}
-            className="p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400"
+            className="hidden md:block p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400"
             aria-label={collapsed ? "Expand" : "Collapse"}
             title={collapsed ? "Expand" : "Collapse"}
           >
@@ -87,19 +159,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <div
             className={clsx(
               "border-b border-slate-100 dark:border-slate-800 px-3 py-3 flex items-center gap-3",
-              collapsed && "justify-center",
+              collapsed && "md:justify-center",
             )}
             title={user.company.name}
           >
             <div className="w-8 h-8 rounded-md bg-brand-600 text-white text-xs font-bold flex items-center justify-center flex-shrink-0">
               {companyInitials}
             </div>
-            {!collapsed && (
-              <div className="min-w-0 flex-1">
-                <div className="text-[10px] uppercase tracking-wide text-slate-500">{t("nav.company")}</div>
-                <div className="text-sm font-semibold truncate">{user.company.name}</div>
-              </div>
-            )}
+            <div className={clsx("min-w-0 flex-1", collapsed && "md:hidden")}>
+              <div className="text-[10px] uppercase tracking-wide text-slate-500">{t("nav.company")}</div>
+              <div className="text-sm font-semibold truncate">{user.company.name}</div>
+            </div>
           </div>
         )}
 
@@ -113,7 +183,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               className={({ isActive }) =>
                 clsx(
                   "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition",
-                  collapsed && "justify-center px-2",
+                  collapsed && "md:justify-center md:px-2",
                   isActive
                     ? "bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300"
                     : "text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800",
@@ -121,16 +191,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
               }
             >
               <Icon size={18} />
-              {!collapsed && <span className="truncate">{label}</span>}
+              <span className={clsx("truncate", collapsed && "md:hidden")}>{label}</span>
             </NavLink>
           ))}
 
-          {!collapsed && isManager && (
-            <div className="text-[10px] uppercase tracking-wide text-slate-400 mt-4 mb-1 px-3">
-              {t("nav.admin")}
-            </div>
-          )}
-          {!collapsed && !isManager && <div className="mt-4" />}
+          <div className={clsx("text-[10px] uppercase tracking-wide text-slate-400 mt-4 mb-1 px-3", collapsed && "md:hidden")}>
+            {t("nav.admin")}
+          </div>
           {adminNav.map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
@@ -139,7 +206,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
               className={({ isActive }) =>
                 clsx(
                   "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition",
-                  collapsed && "justify-center px-2",
+                  collapsed && "md:justify-center md:px-2",
                   isActive
                     ? "bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300"
                     : "text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800",
@@ -147,66 +214,64 @@ export function Layout({ children }: { children: React.ReactNode }) {
               }
             >
               <Icon size={18} />
-              {!collapsed && <span className="truncate">{label}</span>}
+              <span className={clsx("truncate", collapsed && "md:hidden")}>{label}</span>
             </NavLink>
           ))}
         </nav>
 
         <div className="border-t border-slate-200 dark:border-slate-800 p-2 space-y-2">
           <ThemeToggle collapsed={collapsed} />
-          {!collapsed ? (
-            <label className="flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 px-2">
-              <Globe size={14} />
-              <select
-                className="bg-transparent border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-xs flex-1 dark:text-slate-200"
-                value={i18n.resolvedLanguage}
-                onChange={(e) => changeLang(e.target.value)}
-              >
-                {SUPPORTED_LANGUAGES.map((l) => (
-                  <option key={l.code} value={l.code}>{l.label}</option>
-                ))}
-              </select>
-            </label>
-          ) : (
+          <label className={clsx("flex items-center gap-2 text-xs text-slate-600 dark:text-slate-300 px-2", collapsed && "md:hidden")}>
+            <Globe size={14} />
+            <select
+              className="bg-transparent border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-xs flex-1 dark:text-slate-200"
+              value={i18n.resolvedLanguage}
+              onChange={(e) => changeLang(e.target.value)}
+            >
+              {SUPPORTED_LANGUAGES.map((l) => (
+                <option key={l.code} value={l.code}>{l.label}</option>
+              ))}
+            </select>
+          </label>
+          {collapsed && (
             <button
               onClick={() => changeLang(i18n.resolvedLanguage === "fr" ? "en" : "fr")}
-              className="w-full flex items-center justify-center p-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400"
+              className="hidden md:flex w-full items-center justify-center p-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400"
               title={t("nav.language")}
             >
               <Globe size={16} />
             </button>
           )}
 
-          {!collapsed ? (
-            <div className="px-2">
-              <div className="text-[10px] uppercase tracking-wide text-slate-400">{t("nav.signed_in_as")}</div>
-              <div className="text-sm font-medium flex items-center gap-2 mt-0.5">
-                <span className="truncate flex-1">{user?.name}</span>
-                {user?.role && (
-                  <Badge tone={user.role === "MANAGER" ? "violet" : "neutral"} size="xs">
-                    {t(`team.${user.role.toLowerCase()}`)}
-                  </Badge>
-                )}
-              </div>
-              <button
-                onClick={() => {
-                  logger.info("user logout", { userId: user?.id });
-                  logout();
-                  navigate("/login");
-                }}
-                className="btn-secondary w-full mt-2"
-              >
-                <LogOut size={14} /> {t("nav.logout")}
-              </button>
+          <div className={clsx("px-2", collapsed && "md:hidden")}>
+            <div className="text-[10px] uppercase tracking-wide text-slate-400">{t("nav.signed_in_as")}</div>
+            <div className="text-sm font-medium flex items-center gap-2 mt-0.5">
+              <span className="truncate flex-1">{user?.name}</span>
+              {user?.role && (
+                <Badge tone={user.role === "MANAGER" ? "violet" : "neutral"} size="xs">
+                  {t(`team.${user.role.toLowerCase()}`)}
+                </Badge>
+              )}
             </div>
-          ) : (
             <button
               onClick={() => {
                 logger.info("user logout", { userId: user?.id });
                 logout();
                 navigate("/login");
               }}
-              className="w-full flex items-center justify-center p-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400"
+              className="btn-secondary w-full mt-2"
+            >
+              <LogOut size={14} /> {t("nav.logout")}
+            </button>
+          </div>
+          {collapsed && (
+            <button
+              onClick={() => {
+                logger.info("user logout", { userId: user?.id });
+                logout();
+                navigate("/login");
+              }}
+              className="hidden md:flex w-full items-center justify-center p-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400"
               title={t("nav.logout")}
             >
               <LogOut size={16} />
@@ -215,7 +280,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
       <main className="flex-1 overflow-auto">
-        <div className="max-w-6xl mx-auto px-6 py-8">{children}</div>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 sm:py-8">{children}</div>
       </main>
     </div>
   );

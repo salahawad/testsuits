@@ -208,7 +208,7 @@ export function Runs() {
 
   return (
     <div className="space-y-6">
-      <header className="flex items-center justify-between">
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">{t("runs.title")}</h1>
           <p className="text-sm text-slate-500">{t("runs.subtitle")}</p>
@@ -238,7 +238,7 @@ export function Runs() {
 
       {open && (
         <form noValidate onSubmit={form.handleSubmit(onValid)} className="card p-5 space-y-3">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field name="projectId" label={t("runs.project")} error={form.formState.errors.projectId?.message}>
               <select
                 className="input"
@@ -259,7 +259,7 @@ export function Runs() {
               <input className="input" {...form.register("name")} />
             </Field>
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <Field name="milestoneId" label={t("runs.milestone")} error={form.formState.errors.milestoneId?.message}>
               <select className="input" disabled={!projectId} {...form.register("milestoneId")}>
                 <option value="">—</option>
@@ -275,7 +275,7 @@ export function Runs() {
               <input type="date" className="input" {...form.register("dueDate")} />
             </Field>
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <Field name="platform" label={t("platform.label")} error={form.formState.errors.platform?.message}>
               <select className="input" {...form.register("platform")}>
                 <option value="">{t("platform.any")}</option>
@@ -383,7 +383,7 @@ export function Runs() {
           {isManager && (
             <p className="text-xs text-slate-500 mb-2">{t("runs.kanban_hint")}</p>
           )}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div className="flex md:grid md:grid-cols-4 gap-3 overflow-x-auto md:overflow-visible -mx-4 sm:-mx-0 px-4 sm:px-0 snap-x snap-mandatory md:snap-none [&>*]:min-w-[85vw] sm:[&>*]:min-w-[300px] md:[&>*]:min-w-0 [&>*]:snap-center md:[&>*]:snap-align-none">
             {KANBAN_COLUMNS.map((status) => {
               const items = runs.filter((r: { status: string }) => r.status === status);
               return (

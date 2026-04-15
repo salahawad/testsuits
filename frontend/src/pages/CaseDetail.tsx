@@ -252,7 +252,7 @@ export function CaseDetail() {
             <label className="label">Title</label>
             <input className="input" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
           </div>
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <div>
               <label className="label">Priority</label>
               <select className="input" value={draft.priority} onChange={(e) => setDraft({ ...draft, priority: e.target.value })}>
@@ -374,7 +374,7 @@ export function CaseDetail() {
             {steps.map((s, i) => (
               <li key={i} className="flex gap-3 items-start">
                 <div className="w-6 h-6 mt-0.5 rounded-full bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300 text-xs font-semibold leading-none flex items-center justify-center flex-shrink-0">{i + 1}</div>
-                <div className="flex-1 grid grid-cols-2 gap-3">
+                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <div className="text-xs text-slate-500 mb-0.5 flex items-center gap-1">
                       {t("cases.action")}
@@ -401,7 +401,7 @@ export function CaseDetail() {
         <section className="card p-5">
           <h2 className="font-semibold mb-3">{t("cases.custom_fields")}</h2>
           {!editing ? (
-            <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm">
               {customFields.map((f) => {
                 const v = testCase.customFieldValues?.[f.id];
                 const display =
@@ -421,7 +421,7 @@ export function CaseDetail() {
               })}
             </dl>
           ) : (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {customFields.map((f) => {
                 const v = draft.customFieldValues?.[f.id];
                 const common = { required: f.required };
@@ -607,7 +607,7 @@ function SortableStepRow({
       <div className="w-6 h-6 mt-0.5 rounded-full bg-brand-50 text-brand-700 dark:bg-brand-500/15 dark:text-brand-300 text-xs font-semibold leading-none flex items-center justify-center flex-shrink-0">
         {index + 1}
       </div>
-      <div className="flex-1 grid grid-cols-2 gap-3">
+      <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
         <RichEditor value={step.action} onChange={onChangeAction} placeholder="Action" minHeight={64} />
         <RichEditor value={step.expected} onChange={onChangeExpected} placeholder="Expected result" minHeight={64} />
       </div>

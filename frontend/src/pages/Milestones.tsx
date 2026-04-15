@@ -114,7 +114,7 @@ export function Milestones() {
           <Field name="description" label={t("common.description")} error={form.formState.errors.description?.message}>
             <textarea className="input" rows={2} {...form.register("description")} />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field name="dueDate" label={t("runs.due_date")} error={form.formState.errors.dueDate?.message}>
               <input type="date" className="input" {...form.register("dueDate")} />
             </Field>

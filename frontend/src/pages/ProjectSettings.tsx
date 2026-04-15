@@ -204,7 +204,7 @@ export function ProjectSettings() {
                 <RefreshCw size={12} /> {t("jira.refresh")}
               </button>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <input
                   className="input mb-2"

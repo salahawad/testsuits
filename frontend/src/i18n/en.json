@@ -53,7 +53,8 @@
     "logout": "Log out",
     "company": "Company",
     "admin": "Admin",
-    "language": "Language"
+    "language": "Language",
+    "open_menu": "Open menu"
   },
   "auth": {
     "email": "Email",

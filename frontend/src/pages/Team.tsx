@@ -119,7 +119,7 @@ export function Team() {
           className="card p-5 space-y-3"
         >
           <p className="text-sm text-slate-500">{t("team.invite_subtitle")}</p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field name="name" label={t("auth.name")} error={form.formState.errors.name?.message}>
               <input className="input" autoComplete="name" {...form.register("name")} />
             </Field>

@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { Toaster } from "sonner";
 import { useAuth } from "./lib/auth";
@@ -44,9 +45,20 @@ function Protected({ children }: { children: React.ReactNode }) {
 
 export function App() {
   const theme = useTheme((s) => s.theme);
+  // Top-right toasts collide with the mobile hamburger; drop them to
+  // bottom-center on narrow screens where they're easier to thumb-reach.
+  const [toastPos, setToastPos] = useState<"top-right" | "bottom-center">(
+    () => (typeof window !== "undefined" && window.matchMedia("(min-width: 640px)").matches ? "top-right" : "bottom-center"),
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 640px)");
+    const onChange = (e: MediaQueryListEvent) => setToastPos(e.matches ? "top-right" : "bottom-center");
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
   return (
     <>
-    <Toaster position="top-right" richColors closeButton theme={theme} />
+    <Toaster position={toastPos} richColors closeButton theme={theme} />
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />

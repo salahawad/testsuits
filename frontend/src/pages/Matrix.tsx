@@ -86,7 +86,7 @@ export function Matrix() {
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-700">
               <tr>
-                <th className="text-left px-4 py-2 font-semibold">{t("cases.title")}</th>
+                <th className="text-left px-4 py-2 font-semibold sticky left-0 bg-slate-50 dark:bg-slate-800/50 z-10">{t("cases.title")}</th>
                 <th className="text-left px-2 py-2 font-semibold">{t("test_level.label")}</th>
                 {matrix.buckets.map((b: string) => (
                   <th key={b} className="text-center px-3 py-2 font-semibold whitespace-nowrap">{b}</th>
@@ -95,8 +95,8 @@ export function Matrix() {
             </thead>
             <tbody>
               {matrix.rows.map((row: any) => (
-                <tr key={row.caseId} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60">
-                  <td className="px-4 py-2">
+                <tr key={row.caseId} className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/60 group">
+                  <td className="px-4 py-2 sticky left-0 bg-white dark:bg-slate-900 group-hover:bg-slate-50 dark:group-hover:bg-slate-800/60 z-10">
                     <Link to={`/cases/${row.caseId}`} className="font-medium hover:underline">{row.title}</Link>
                     <div className="text-xs text-slate-500">{row.suite.name}</div>
                   </td>

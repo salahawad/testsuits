@@ -61,7 +61,7 @@ export function ProjectDetail() {
 
   return (
     <div className="space-y-6">
-      <header className="flex items-center justify-between">
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="text-xs font-semibold text-brand-600 mb-1">{project.key}</div>
           <h1 className="text-2xl font-bold">{project.name}</h1>

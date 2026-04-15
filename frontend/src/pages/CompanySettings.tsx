@@ -124,7 +124,7 @@ export function CompanySettings() {
             <input className="input" placeholder="https://your-domain.atlassian.net" value={form.baseUrl} disabled={!isManager}
               onChange={(e) => setForm({ ...form, baseUrl: e.target.value })} required />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="label">{t("jira.account_email")}</label>
               <input type="email" className="input" value={form.email} disabled={!isManager}

@@ -61,7 +61,7 @@ export function Projects() {
 
   return (
     <div className="space-y-6">
-      <header className="flex items-center justify-between">
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">{t("projects.title")}</h1>
           <p className="text-sm text-slate-500">{t("projects.subtitle")}</p>
@@ -75,7 +75,7 @@ export function Projects() {
           onSubmit={form.handleSubmit((values) => create.mutate(values))}
           className="card p-5 space-y-3"
         >
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <Field name="key" label={t("projects.key")} error={form.formState.errors.key?.message}>
               <input
                 className="input uppercase"
@@ -113,7 +113,7 @@ export function Projects() {
       {projects.length === 0 ? (
         <div className="card p-10 text-center text-slate-500">{t("projects.empty")}</div>
       ) : (
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid md:grid-cols-2 lg:grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {projects.map((p: any) => (
             <Link key={p.id} to={`/projects/${p.id}`} className="card p-5 hover:border-brand-500 transition">
               <div className="flex items-center justify-between mb-2">

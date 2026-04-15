@@ -91,7 +91,7 @@ export function SharedStepsEditor({ projectId, canEdit }: { projectId: string; c
             <label className="label">{t("shared_steps.name")}</label>
             <input className="input" required value={name} onChange={(e) => setName(e.target.value)} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="label">{t("cases.action")}</label>
               <RichEditor value={action} onChange={setAction} minHeight={88} />
@@ -116,7 +116,7 @@ export function SharedStepsEditor({ projectId, canEdit }: { projectId: string; c
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <div className="font-medium text-sm">{s.name}</div>
-                <div className="grid grid-cols-2 gap-4 mt-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-2">
                   <div>
                     <div className="text-xs text-slate-500">{t("cases.action")}</div>
                     <Markdown source={s.action} className="text-sm" />
