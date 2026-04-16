@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Copy, Lock, Plus, Trash2, Unlock } from "lucide-react";
+import { UserAvatar } from "../components/UserAvatar";
 import { z } from "zod";
 import { toast } from "sonner";
 import { api } from "../lib/api";
@@ -188,15 +189,21 @@ export function Team() {
       )}
 
       <div className="card divide-y divide-slate-100 dark:divide-slate-800">
-        {users.map((u: { id: string; name: string; email: string; role: string; isLocked?: boolean }) => (
+        {users.map((u: { id: string; name: string; email: string; role: string; isLocked?: boolean; lastLoginAt?: string | null; avatarKey?: string | null }) => (
           <div key={u.id} className={`flex items-center justify-between px-5 py-3${u.isLocked ? " opacity-60" : ""}`}>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-3">
+              <UserAvatar userId={u.id} name={u.name} hasAvatar={!!u.avatarKey} size="w-9 h-9 text-sm" />
               <div>
                 <div className="font-medium flex items-center gap-1.5">
                   {u.name}
                   {u.isLocked && <Badge tone="danger">{t("team.locked")}</Badge>}
                 </div>
                 <div className="text-xs text-slate-500">{u.email}</div>
+                <div className="text-xs text-slate-400 dark:text-slate-500">
+                  {u.lastLoginAt
+                    ? `${t("team.last_login")}: ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(u.lastLoginAt))}`
+                    : t("team.never_logged_in")}
+                </div>
               </div>
             </div>
             <div className="flex items-center gap-2">

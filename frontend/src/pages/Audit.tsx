@@ -11,10 +11,48 @@ type Row = {
   action: string;
   entityType: string;
   entityId: string;
-  payload: any;
+  payload: Record<string, unknown> | null;
   user: { id: string; name: string; email: string } | null;
   project: { id: string; key: string; name: string } | null;
 };
+
+function formatDetail(action: string, p: Record<string, unknown> | null, t: (k: string, opts?: Record<string, unknown>) => string): string | null {
+  if (!p) return null;
+  switch (action) {
+    case "RUN_CREATED":
+      return t("audit.detail_run_created", { name: p.name, count: p.caseCount });
+    case "RUN_STATUS_CHANGED":
+      // Older rows may only have `status` (no `from`/`to`).
+      if (p.from && p.to)
+        return t("audit.detail_status_changed", { name: p.name ?? "", from: p.from, to: p.to });
+      return t("audit.detail_status_set", { status: p.status ?? p.to });
+    case "EXECUTION_STATUS_CHANGED":
+      return t("audit.detail_exec_status", { case: p.case, from: p.from, to: p.to });
+    case "EXECUTION_ASSIGNED":
+      return t("audit.detail_exec_assigned", { case: p.case });
+    case "CASE_CREATED":
+      return t("audit.detail_case_created", { title: p.title });
+    case "CASE_UPDATED":
+      return t("audit.detail_case_updated", { title: p.title });
+    case "CASE_CLONED":
+      return t("audit.detail_case_cloned", { title: p.title });
+    case "COMMENT_ADDED": {
+      const body = typeof p.body === "string" ? p.body : "";
+      return body.length > 80 ? body.slice(0, 80) + "…" : body;
+    }
+    case "JIRA_LINKED":
+      return t("audit.detail_jira_linked", { key: p.issueKey });
+    case "SHARED_STEP_CREATED":
+    case "SHARED_STEP_UPDATED":
+      return t("audit.detail_shared_step", { name: p.name });
+    case "WEBHOOK_CONFIGURED":
+      return t("audit.detail_webhook", { url: p.url, count: Array.isArray(p.events) ? p.events.length : 0 });
+    case "CUSTOM_FIELDS_UPDATED":
+      return t("audit.detail_custom_fields", { count: p.count });
+    default:
+      return null;
+  }
+}
 
 export function Audit() {
   const { t } = useTranslation();
@@ -114,20 +152,23 @@ export function Audit() {
                   <th className="px-4 py-2 text-left">{t("audit.when")}</th>
                   <th className="px-4 py-2 text-left">{t("audit.user")}</th>
                   <th className="px-4 py-2 text-left">{t("audit.action")}</th>
+                  <th className="px-4 py-2 text-left">{t("audit.details")}</th>
                   <th className="px-4 py-2 text-left">{t("audit.project")}</th>
-                  <th className="px-4 py-2 text-left">{t("audit.entity")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {rows.map((r) => (
-                  <tr key={r.id}>
-                    <td className="px-4 py-2 whitespace-nowrap text-xs text-slate-500">{new Date(r.createdAt).toLocaleString()}</td>
-                    <td className="px-4 py-2">{r.user?.name ?? "—"}<div className="text-xs text-slate-500">{r.user?.email ?? ""}</div></td>
-                    <td className="px-4 py-2"><span className="badge bg-slate-100 text-slate-700 dark:bg-slate-700/50 dark:text-slate-200">{r.action}</span></td>
-                    <td className="px-4 py-2">{r.project ? `${r.project.key} · ${r.project.name}` : "—"}</td>
-                    <td className="px-4 py-2 text-xs text-slate-500 font-mono truncate max-w-[20ch]">{r.entityType}:{r.entityId}</td>
-                  </tr>
-                ))}
+                {rows.map((r) => {
+                  const detail = formatDetail(r.action, r.payload, t);
+                  return (
+                    <tr key={r.id}>
+                      <td className="px-4 py-2 whitespace-nowrap text-xs text-slate-500">{new Date(r.createdAt).toLocaleString()}</td>
+                      <td className="px-4 py-2">{r.user?.name ?? "—"}<div className="text-xs text-slate-500">{r.user?.email ?? ""}</div></td>
+                      <td className="px-4 py-2"><span className="badge bg-slate-100 text-slate-700 dark:bg-slate-700/50 dark:text-slate-200">{r.action}</span></td>
+                      <td className="px-4 py-2 text-sm text-slate-600 dark:text-slate-300 max-w-[36ch] truncate" title={detail ?? ""}>{detail ?? "—"}</td>
+                      <td className="px-4 py-2">{r.project ? `${r.project.key} · ${r.project.name}` : "—"}</td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

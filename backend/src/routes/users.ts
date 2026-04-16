@@ -16,7 +16,7 @@ usersRouter.get("/", async (req: AuthedRequest, res, next) => {
   try {
     const users = await prisma.user.findMany({
       where: userListWhere(req.user!),
-      select: { id: true, name: true, email: true, role: true, isLocked: true, createdAt: true },
+      select: { id: true, name: true, email: true, role: true, isLocked: true, createdAt: true, lastLoginAt: true, avatarKey: true },
       orderBy: [{ role: "asc" }, { name: "asc" }],
     });
     res.json(users);

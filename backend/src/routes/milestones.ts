@@ -36,6 +36,8 @@ milestonesRouter.post("/", requireManager, async (req: AuthedRequest, res, next)
     if (!data.projectId) throw httpError(400, "PROJECT_ID_REQUIRED");
     const project = await prisma.project.findFirst({ where: projectWhere(req.user!, { id: data.projectId }), select: { id: true } });
     if (!project) throw httpError(404, "PROJECT_NOT_FOUND");
+    const dup = await prisma.milestone.findFirst({ where: { projectId: data.projectId, name: data.name } });
+    if (dup) throw httpError(409, "MILESTONE_NAME_TAKEN");
     const milestone = await prisma.milestone.create({
       data: {
         projectId: data.projectId,
@@ -54,9 +56,13 @@ milestonesRouter.post("/", requireManager, async (req: AuthedRequest, res, next)
 
 milestonesRouter.patch("/:id", requireManager, async (req: AuthedRequest, res, next) => {
   try {
-    const owned = await prisma.milestone.findFirst({ where: milestoneWhere(req.user!, { id: req.params.id }), select: { id: true } });
+    const owned = await prisma.milestone.findFirst({ where: milestoneWhere(req.user!, { id: req.params.id }), select: { id: true, projectId: true } });
     if (!owned) throw httpError(404, "MILESTONE_NOT_FOUND");
     const data = upsert.partial().parse(req.body);
+    if (data.name) {
+      const dup = await prisma.milestone.findFirst({ where: { projectId: owned.projectId, name: data.name, id: { not: req.params.id } } });
+      if (dup) throw httpError(409, "MILESTONE_NAME_TAKEN");
+    }
     const milestone = await prisma.milestone.update({
       where: { id: req.params.id },
       data: {

@@ -150,13 +150,11 @@ authRouter.post("/login", loginLimiter, async (req, res, next) => {
       throw httpError(401, "INVALID_CREDENTIALS");
     }
 
-    // Successful login — reset lockout state.
-    if (user.failedAttempts > 0 || user.lockedUntil) {
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { failedAttempts: 0, lockedUntil: null },
-      });
-    }
+    // Successful login — reset lockout state and record login time.
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { failedAttempts: 0, lockedUntil: null, lastLoginAt: new Date() },
+    });
 
     // Gate: email not verified yet.
     if (!user.emailVerifiedAt) {
