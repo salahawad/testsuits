@@ -1,6 +1,7 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
+import { randomBytes, createHash } from "crypto";
 import { z } from "zod";
 import { generateSecret, generateURI, verifySync } from "otplib";
 import QRCode from "qrcode";
@@ -8,6 +9,12 @@ import { prisma } from "../db";
 import { AuthedRequest, signToken, verifyChallengeToken } from "../middleware/auth";
 import { httpError } from "../middleware/error";
 import { logger } from "../lib/logger";
+
+const TRUST_DEVICE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+
+function hashToken(plaintext: string) {
+  return createHash("sha256").update(plaintext).digest("hex");
+}
 
 const limiterCommon = {
   standardHeaders: true,
@@ -104,12 +111,15 @@ twoFactorRouter.post("/disable", setupLimiter, async (req: AuthedRequest, res, n
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) throw httpError(401, "Incorrect password");
 
-    await prisma.user.update({
-      where: { id: req.user!.id },
-      data: { totpSecret: null, totpEnabledAt: null },
-    });
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: req.user!.id },
+        data: { totpSecret: null, totpEnabledAt: null },
+      }),
+      prisma.trustedDevice.deleteMany({ where: { userId: req.user!.id } }),
+    ]);
 
-    logger.info({ userId: req.user!.id }, "2fa disabled");
+    logger.info({ userId: req.user!.id }, "2fa disabled — trusted devices revoked");
     res.json({ ok: true });
   } catch (e) { next(e); }
 });
@@ -121,11 +131,13 @@ twoFactorRouter.post("/disable", setupLimiter, async (req: AuthedRequest, res, n
 const authenticateSchema = z.object({
   challengeToken: z.string().min(1),
   code: z.string().length(6),
+  trustDevice: z.boolean().optional().default(false),
+  rememberMe: z.boolean().optional().default(false),
 });
 
 twoFactorRouter.post("/authenticate", authLimiter, async (req, res, next) => {
   try {
-    const { challengeToken, code } = authenticateSchema.parse(req.body);
+    const { challengeToken, code, trustDevice, rememberMe } = authenticateSchema.parse(req.body);
 
     let userId: string;
     try {
@@ -145,12 +157,27 @@ twoFactorRouter.post("/authenticate", authLimiter, async (req, res, next) => {
     const valid = verifySync({ secret: user.totpSecret, token: code }).valid;
     if (!valid) throw httpError(401, "Invalid 2FA code");
 
+    // Issue a trusted-device token so this device can skip 2FA for 30 days.
+    let trustToken: string | undefined;
+    if (trustDevice) {
+      const raw = "td_" + randomBytes(32).toString("base64url");
+      await prisma.trustedDevice.create({
+        data: {
+          userId: user.id,
+          tokenHash: hashToken(raw),
+          expiresAt: new Date(Date.now() + TRUST_DEVICE_TTL_MS),
+        },
+      });
+      trustToken = raw;
+      logger.info({ userId: user.id }, "trusted device token issued (30d)");
+    }
+
     const token = signToken({
       id: user.id,
       email: user.email,
       role: user.role,
       companyId: user.companyId,
-    });
+    }, { rememberMe });
     logger.info({ userId: user.id }, "2fa authentication succeeded");
     res.json({
       token,
@@ -161,6 +188,7 @@ twoFactorRouter.post("/authenticate", authLimiter, async (req, res, next) => {
         role: user.role,
         company: { id: user.company.id, name: user.company.name, slug: user.company.slug },
       },
+      ...(trustToken ? { trustToken } : {}),
     });
   } catch (e) { next(e); }
 });

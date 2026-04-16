@@ -14,7 +14,8 @@ A self-hosted test management platform for manual functional QA. Organise projec
 - **CSV export** of run results.
 - **API tokens** — personal access tokens (`ts_…` prefix, SHA-256 hashed at rest). Send as `Authorization: Bearer <token>` to call the API from CI. Token auth is read-only on the token management endpoints — tokens can't mint more tokens.
 - **Email verification** — new signups must verify their email address before signing in. A tokenized verification link (24 h TTL) is emailed on signup; the UI shows the link in dev mode. Invited, SAML, and SCIM-provisioned users are auto-verified.
-- **Two-factor authentication (TOTP)** — optional per-user 2FA. Users enable it from their Profile page (scan QR code with any TOTP app). When enabled, login requires a 6-digit code after the password step. Disabling requires the current password.
+- **Two-factor authentication (TOTP)** — optional per-user 2FA. Users enable it from their Profile page (scan QR code with any TOTP app). When enabled, login requires a 6-digit code after the password step. A **Trust this device** checkbox lets users skip 2FA on the same browser for 30 days. Disabling 2FA requires the current password and revokes all trusted devices.
+- **Remember me** — unchecked (default) sessions expire in 24 hours; checked sessions last 30 days. The choice carries through the 2FA step so the full flow honours it.
 - **Invite flow & password reset** — managers invite teammates via one-time signed links; users reset their own password from the sign-in page. Links go through SMTP (Mailpit in dev, any SMTP provider in prod), and the UI also surfaces a copyable dev link for local testing.
 - **Requirements & traceability** — first-class `Requirement` objects per project, with many-to-many links to test cases. The Coverage Matrix has a **Requirement** dimension that pivots the latest execution status per case under each linked requirement; unlinked cells are blank and linked-but-never-executed cells show `UNTESTED`.
 - **Roles** — `ADMIN` (company settings, SSO/SCIM tokens, audit log), `MANAGER` (all project work), `TESTER` (runs/executions they own, created, or are assigned to; can execute and assign), `VIEWER` (read-only across the company).
@@ -247,11 +248,25 @@ The sign-in page has a **Forgot your password?** link. Enter your email; if it m
 
 ### Signing in with 2FA
 
-After entering your email and password, a second screen asks for the 6-digit code from your authenticator app. The challenge token is valid for 5 minutes.
+After entering your email and password, a second screen asks for the 6-digit code from your authenticator app. The challenge token is valid for 5 minutes. Check **Trust this device for 30 days** to skip the code step on future logins from the same browser.
+
+### Trusted devices
+
+When you check "Trust this device" during 2FA, the server issues an opaque token (`td_` prefix, SHA-256 hashed at rest, 30-day expiry). On subsequent logins the token is sent via `X-Trust-Token` header; if it's valid for the authenticated user, the 2FA step is bypassed. Trusted device tokens are revoked automatically when:
+
+- The user changes their password
+- The user resets their password
+- 2FA is disabled
+
+Logout does **not** revoke trusted devices — the trust represents the machine, not the session. A forced session revocation (401) clears the trust token from the browser.
 
 ### Disabling 2FA
 
-In **Profile → Two-factor authentication**, enter your current password and click **Disable 2FA**.
+In **Profile → Two-factor authentication**, enter your current password and click **Disable 2FA**. All trusted devices are revoked.
+
+### Remember me
+
+The login page has a **Remember me for 30 days** checkbox. When unchecked (default), the JWT session expires in 24 hours. When checked, it lasts 30 days. The flag is carried through the 2FA challenge flow so the session duration is honoured regardless of whether 2FA is enabled.
 
 ## API tokens (for CI / scripting)
 
@@ -286,7 +301,8 @@ Company
   │     ├── Comments
   │     ├── ActivityLog entries
   │     ├── ApiTokens
-  │     └── EmailVerificationTokens
+  │     ├── EmailVerificationTokens
+  │     └── TrustedDevices (td_ tokens, SHA-256, 30d TTL)
   ├── JiraConfig (optional, 1 per company — credentials + templates)
   └── Projects
         ├── jiraProjectKey / jiraIssueType / jiraParentEpicKey (per-project target)
@@ -474,7 +490,9 @@ All routes live under `/api`. Authentication is required except the public endpo
 - **Token management endpoints require a JWT session** — API-token callers can't mint, list, or revoke tokens, so a leaked token can't be used to create fresh credentials.
 - **Email verification** — new signups cannot log in until they verify their email via a tokenized link (24 h TTL, SHA-256 hashed at rest, single-use). Invited, SAML, and SCIM users are auto-verified. Resend is rate-limited and the response is identical for known/unknown emails.
 - **Two-factor authentication** — optional TOTP (RFC 6238). The secret is stored per-user; `totpEnabledAt` is `null` until setup is confirmed with a valid code. Login returns a short-lived challenge JWT (5 min) instead of a session when 2FA is active; the full session JWT is only issued after the TOTP code is verified. Disabling 2FA requires the current password.
-- **Password reset** wipes the door on both sides: every outstanding JWT for that user is revoked (via `passwordUpdatedAt` compared against the JWT's `iat`) and every API token they own is deleted. If a password leaks, a single reset kicks everyone off the account.
+- **Trusted devices** — when a user checks "Trust this device" during 2FA, an opaque token (`td_` prefix, 256-bit, SHA-256 hashed at rest, 30-day server-side expiry) is issued. On subsequent logins the token is sent via `X-Trust-Token` and validated against `TrustedDevice.tokenHash` + `userId` + `expiresAt`. The token only bypasses the 2FA step — the user's password is still verified. Tokens are revoked on password change, password reset, or 2FA disable; logout does not revoke them.
+- **Remember me** — controls JWT lifespan: unchecked = 24 h, checked = 30 d. The flag is forwarded through the 2FA challenge so the session duration is honoured end-to-end.
+- **Password reset** wipes the door on both sides: every outstanding JWT for that user is revoked (via `passwordUpdatedAt` compared against the JWT's `iat`), every API token is deleted, and every trusted device token is revoked. If a password leaks, a single reset kicks everyone off the account.
 - **Login is timing-neutral** — bcrypt runs even when the email is unknown so response latency can't be used to enumerate accounts.
 - **Client error pipeline** (`POST /_client-log`) is **unauthenticated by design** — browsers can't send JWTs on `navigator.sendBeacon`. It's rate-limited per IP, body-capped, and zod-validated. Identity fields (`userId`, `userEmail`, `sessionId`) are **client-asserted and never used for authorization** — only for correlating client errors to backend traces. Authz still lives on the JWT-protected `/api/*` routes.
 

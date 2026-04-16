@@ -13,12 +13,12 @@ export type User = {
 
 export type LoginResult =
   | { kind: "session"; token: string; user: User }
-  | { kind: "2fa"; challengeToken: string };
+  | { kind: "2fa"; challengeToken: string; rememberMe?: boolean };
 
 type AuthState = {
   user: User | null;
   token: string | null;
-  login: (email: string, password: string) => Promise<LoginResult>;
+  login: (email: string, password: string, rememberMe?: boolean) => Promise<LoginResult>;
   signup: (email: string, password: string, name: string, companyName: string) => Promise<{ devToken?: string }>;
   setSession: (token: string, user: User) => void;
   updateUser: (patch: Partial<User>) => void;
@@ -36,10 +36,10 @@ const storedUser = (() => {
 export const useAuth = create<AuthState>((set) => ({
   user: storedUser,
   token: localStorage.getItem("token"),
-  login: async (email, password) => {
-    const { data } = await api.post("/auth/login", { email, password }, { silent: true });
+  login: async (email, password, rememberMe) => {
+    const { data } = await api.post("/auth/login", { email, password, rememberMe: !!rememberMe }, { silent: true });
     if (data.requires2fa) {
-      return { kind: "2fa", challengeToken: data.challengeToken };
+      return { kind: "2fa", challengeToken: data.challengeToken, rememberMe: data.rememberMe };
     }
     localStorage.setItem("token", data.token);
     localStorage.setItem("user", JSON.stringify(data.user));

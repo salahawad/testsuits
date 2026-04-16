@@ -322,8 +322,11 @@ async function seedProject(spec: ProjectSpec, companyId: string) {
 async function upsertUser(email: string, name: string, password: string, role: "MANAGER" | "TESTER", companyId: string) {
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
-    if (existing.companyId !== companyId || existing.role !== role) {
-      await prisma.user.update({ where: { id: existing.id }, data: { companyId, role, name } });
+    if (existing.companyId !== companyId || existing.role !== role || !existing.emailVerifiedAt) {
+      await prisma.user.update({
+        where: { id: existing.id },
+        data: { companyId, role, name, emailVerifiedAt: existing.emailVerifiedAt ?? new Date() },
+      });
     }
     return existing;
   }

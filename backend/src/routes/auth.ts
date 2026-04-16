@@ -14,6 +14,7 @@ const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;    // 7 days
 const VERIFY_EMAIL_TTL_MS = 24 * 60 * 60 * 1000;  // 24 hours
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 15 * 60 * 1000;        // 15 minutes
+const TRUST_DEVICE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 // Stable bcrypt hash used as a timing shield when login can't find the user.
 // Generated once at boot for "invalid-password-but-valid-shape" so attackers
@@ -50,6 +51,7 @@ export const authRouter = Router();
 const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
+  rememberMe: z.boolean().optional().default(false),
 });
 
 // Password policy applied when a password is *set* (signup, reset, accept-invite).
@@ -97,7 +99,7 @@ async function createAndSendVerification(user: { id: string; email: string; name
 
 authRouter.post("/login", loginLimiter, async (req, res, next) => {
   try {
-    const { email, password } = loginSchema.parse(req.body);
+    const { email, password, rememberMe } = loginSchema.parse(req.body);
     const user = await prisma.user.findUnique({ where: { email }, include: { company: true } });
     // Run bcrypt.compare unconditionally so response latency doesn't reveal
     // whether the email exists.
@@ -155,30 +157,31 @@ authRouter.post("/login", loginLimiter, async (req, res, next) => {
       return res.status(403).json({ error: "Please verify your email address before signing in.", code: "EMAIL_NOT_VERIFIED" });
     }
 
-    // Gate: 2FA enabled — issue a short-lived challenge token instead of a session.
+    const userPayload = { id: user.id, email: user.email, role: user.role, companyId: user.companyId } as const;
+    const userJson = { id: user.id, email: user.email, name: user.name, role: user.role, company: { id: user.company.id, name: user.company.name, slug: user.company.slug } };
+
+    // Gate: 2FA enabled — check for a trusted-device token first.
     if (user.totpEnabledAt) {
+      const trustHeader = req.headers["x-trust-token"] as string | undefined;
+      if (trustHeader) {
+        const trusted = await prisma.trustedDevice.findFirst({
+          where: { tokenHash: hashToken(trustHeader), userId: user.id, expiresAt: { gt: new Date() } },
+        });
+        if (trusted) {
+          const token = signToken(userPayload, { rememberMe });
+          logger.info({ userId: user.id }, "login succeeded — trusted device, 2FA skipped");
+          return res.json({ token, user: userJson });
+        }
+      }
+      // Not trusted — issue a short-lived challenge token.
       const challengeToken = signChallengeToken(user.id);
       logger.info({ userId: user.id }, "login paused — 2FA challenge issued");
-      return res.json({ requires2fa: true, challengeToken });
+      return res.json({ requires2fa: true, challengeToken, rememberMe });
     }
 
-    const token = signToken({
-      id: user.id,
-      email: user.email,
-      role: user.role,
-      companyId: user.companyId,
-    });
+    const token = signToken(userPayload, { rememberMe });
     logger.info({ userId: user.id, email: user.email, companyId: user.companyId }, "login succeeded");
-    res.json({
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        company: { id: user.company.id, name: user.company.name, slug: user.company.slug },
-      },
-    });
+    res.json({ token, user: userJson });
   } catch (e) {
     next(e);
   }
@@ -307,6 +310,7 @@ authRouter.post("/reset", resetLimiter, async (req, res, next) => {
         data: { passwordHash, passwordUpdatedAt: now, failedAttempts: 0, lockedUntil: null },
       }),
       prisma.apiToken.deleteMany({ where: { userId: row.userId } }),
+      prisma.trustedDevice.deleteMany({ where: { userId: row.userId } }),
       prisma.passwordResetToken.update({ where: { id: row.id }, data: { consumedAt: now } }),
       // Any other outstanding reset tokens for this user become unusable.
       prisma.passwordResetToken.updateMany({

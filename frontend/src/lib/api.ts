@@ -20,6 +20,8 @@ export type ApiRequestConfig = AxiosRequestConfig;
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("token");
   if (token) config.headers.Authorization = `Bearer ${token}`;
+  const trustToken = localStorage.getItem("trustToken");
+  if (trustToken) config.headers["X-Trust-Token"] = trustToken;
   return config;
 });
 
@@ -63,6 +65,7 @@ api.interceptors.response.use(
       if (!onLogin) {
         localStorage.removeItem("token");
         localStorage.removeItem("user");
+        localStorage.removeItem("trustToken");
         if (msg) localStorage.setItem(LOGIN_FLASH_KEY, msg);
         window.location.href = "/login";
       }

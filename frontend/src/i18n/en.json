@@ -70,6 +70,7 @@
     "confirm_password": "Confirm password",
     "show_password": "Show password",
     "hide_password": "Hide password",
+    "remember_me": "Remember me for 30 days",
     "no_account": "No account? Create one",
     "no_company": "New here? Create a company",
     "have_account": "Already have an account? Sign in"
@@ -538,7 +539,8 @@
     "code_label": "6-digit code",
     "verify": "Verify",
     "login_title": "Two-factor authentication",
-    "login_help": "Enter the 6-digit code from your authenticator app."
+    "login_help": "Enter the 6-digit code from your authenticator app.",
+    "trust_device": "Trust this device for 30 days"
   },
   "profile": {
     "title": "My Profile",

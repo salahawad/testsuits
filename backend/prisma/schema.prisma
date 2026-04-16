@@ -149,6 +149,7 @@ model User {
   sharedSteps     SharedStep[]
   resetTokens     PasswordResetToken[]
   emailVerifyTokens EmailVerificationToken[]
+  trustedDevices  TrustedDevice[]
   sentInvites     InviteToken[]        @relation("InvitedBy")
 }
 
@@ -174,6 +175,17 @@ model EmailVerificationToken {
   createdAt DateTime @default(now())
 
   @@index([userId, expiresAt])
+}
+
+model TrustedDevice {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 model InviteToken {

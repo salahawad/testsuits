@@ -70,6 +70,7 @@
     "confirm_password": "Confirmer le mot de passe",
     "show_password": "Afficher le mot de passe",
     "hide_password": "Masquer le mot de passe",
+    "remember_me": "Se souvenir de moi pendant 30 jours",
     "no_account": "Pas de compte ? Créez-en un",
     "no_company": "Nouveau ? Créer une entreprise",
     "have_account": "Vous avez déjà un compte ? Se connecter"
@@ -538,7 +539,8 @@
     "code_label": "Code à 6 chiffres",
     "verify": "Vérifier",
     "login_title": "Authentification à deux facteurs",
-    "login_help": "Entrez le code à 6 chiffres de votre application d'authentification."
+    "login_help": "Entrez le code à 6 chiffres de votre application d'authentification.",
+    "trust_device": "Faire confiance à cet appareil pendant 30 jours"
   },
   "profile": {
     "title": "Mon profil",

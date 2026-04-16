@@ -85,11 +85,14 @@ usersRouter.put("/me/password", async (req: AuthedRequest, res, next) => {
       throw httpError(400, "Current password is incorrect");
     }
     const passwordHash = await bcrypt.hash(newPassword, 10);
-    await prisma.user.update({
-      where: { id: req.user!.id },
-      data: { passwordHash, passwordUpdatedAt: new Date() },
-    });
-    logger.info({ userId: user.id }, "password changed");
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: req.user!.id },
+        data: { passwordHash, passwordUpdatedAt: new Date() },
+      }),
+      prisma.trustedDevice.deleteMany({ where: { userId: req.user!.id } }),
+    ]);
+    logger.info({ userId: user.id }, "password changed — trusted devices revoked");
     res.json({ ok: true });
   } catch (e) {
     next(e);

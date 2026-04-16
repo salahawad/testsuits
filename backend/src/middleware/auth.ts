@@ -33,8 +33,8 @@ export function hashApiToken(plaintext: string): string {
   return createHash("sha256").update(plaintext).digest("hex");
 }
 
-export function signToken(payload: AuthedUser) {
-  return jwt.sign(payload, SECRET, { expiresIn: "7d" });
+export function signToken(payload: AuthedUser, opts?: { rememberMe?: boolean }) {
+  return jwt.sign(payload, SECRET, { expiresIn: opts?.rememberMe ? "30d" : "24h" });
 }
 
 /** Short-lived JWT used as a 2FA challenge after password verification. */

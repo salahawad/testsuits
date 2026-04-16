@@ -46,8 +46,13 @@ export function Login() {
   const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
   const [resending, setResending] = useState(false);
 
+  // Remember me.
+  const [rememberMe, setRememberMe] = useState(false);
+
   // 2FA challenge state.
   const [challengeToken, setChallengeToken] = useState<string | null>(null);
+  const [challengeRememberMe, setChallengeRememberMe] = useState(false);
+  const [trustDevice, setTrustDevice] = useState(false);
   const [totpCode, setTotpCode] = useState("");
   const [totpBusy, setTotpBusy] = useState(false);
   const [totpError, setTotpError] = useState<string | null>(null);
@@ -75,9 +80,10 @@ export function Login() {
     setSubmitError(null);
     setUnverifiedEmail(null);
     try {
-      const result = await login(values.email, values.password);
+      const result = await login(values.email, values.password, rememberMe);
       if (result.kind === "2fa") {
         setChallengeToken(result.challengeToken);
+        setChallengeRememberMe(result.rememberMe ?? false);
         logger.info("2fa challenge", { email: values.email });
         return;
       }
@@ -126,7 +132,10 @@ export function Login() {
     setTotpBusy(true);
     setTotpError(null);
     try {
-      const { data } = await api.post("/2fa/authenticate", { challengeToken, code: totpCode }, { silent: true });
+      const { data } = await api.post("/2fa/authenticate", {
+        challengeToken, code: totpCode, trustDevice, rememberMe: challengeRememberMe,
+      }, { silent: true });
+      if (data.trustToken) localStorage.setItem("trustToken", data.trustToken);
       setSession(data.token, data.user);
       logger.info("2fa auth success");
       navigate("/");
@@ -172,6 +181,10 @@ export function Login() {
                 onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
               />
             </Field>
+            <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 cursor-pointer select-none">
+              <input type="checkbox" checked={trustDevice} onChange={(e) => setTrustDevice(e.target.checked)} className="rounded border-slate-300 dark:border-slate-600" />
+              {t("twofa.trust_device")}
+            </label>
             <button type="submit" disabled={totpBusy || totpCode.length !== 6} className="btn-primary w-full">
               {totpBusy ? t("common.please_wait") : t("twofa.verify")}
             </button>
@@ -239,6 +252,10 @@ export function Login() {
                   </button>
                 </div>
               )}
+              <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 cursor-pointer select-none">
+                <input type="checkbox" checked={rememberMe} onChange={(e) => setRememberMe(e.target.checked)} className="rounded border-slate-300 dark:border-slate-600" />
+                {t("auth.remember_me")}
+              </label>
               <button type="submit" disabled={busy} className="btn-primary w-full">
                 {busy ? t("common.please_wait") : t("auth.sign_in")}
               </button>
