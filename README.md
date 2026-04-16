@@ -297,7 +297,7 @@ The Coverage Matrix picks up a new dimension: select **Requirement** on the Matr
 ```
 Company
   ├── Users (MANAGER / TESTER)
-  │     ├── emailVerifiedAt, totpSecret, totpEnabledAt, isLocked
+  │     ├── emailVerifiedAt, totpSecret, totpEnabledAt, isLocked, lastLoginAt
   │     ├── owned TestRuns
   │     ├── assigned TestExecutions
   │     ├── Comments
@@ -341,7 +341,7 @@ Enums: `Role` (`MANAGER`, `TESTER`), `RunStatus` (`PENDING`/`IN_PROGRESS`/`COMPL
 | View projects, suites, cases, milestones            | ✔     | ✔       | ✔                                         | ✔      |
 | View runs & executions                              | ✔     | ✔       | only those they created or are assigned to | ✔      |
 | Create/edit projects, suites, cases, milestones     | ✔     | ✔       | —                                         | —      |
-| Create test runs                                    | ✔     | ✔       | —                                         | —      |
+| Create test runs                                    | ✔     | ✔       | ✔                                         | —      |
 | Archive / restore test runs                         | ✔     | ✔       | —                                         | —      |
 | Execute tests (status, notes, duration, failure)    | ✔     | ✔       | ✔                                         | —      |
 | Assign / reassign executions (single & bulk)        | ✔     | ✔       | ✔                                         | —      |

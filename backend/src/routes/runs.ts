@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db";
-import { AuthedRequest, requireManager } from "../middleware/auth";
+import { AuthedRequest, requireManager, requireWrite } from "../middleware/auth";
 import { httpError } from "../middleware/error";
 import { caseWhere, projectWhere, runWhere, suiteWhere } from "../middleware/scope";
 import { logActivity } from "../lib/activity";
@@ -58,7 +58,7 @@ runsRouter.get("/", async (req: AuthedRequest, res, next) => {
   }
 });
 
-runsRouter.post("/", requireManager, async (req: AuthedRequest, res, next) => {
+runsRouter.post("/", requireWrite, async (req: AuthedRequest, res, next) => {
   try {
     const data = createSchema.parse(req.body);
     const project = await prisma.project.findFirst({ where: projectWhere(req.user!, { id: data.projectId }), select: { id: true } });
@@ -167,7 +167,7 @@ runsRouter.get("/:id", async (req: AuthedRequest, res, next) => {
 
 runsRouter.patch("/:id", requireManager, async (req: AuthedRequest, res, next) => {
   try {
-    const owned = await prisma.testRun.findFirst({ where: runWhere(req.user!, { id: req.params.id }), select: { id: true, projectId: true } });
+    const owned = await prisma.testRun.findFirst({ where: runWhere(req.user!, { id: req.params.id }), select: { id: true, projectId: true, status: true, name: true } });
     if (!owned) throw httpError(404, "RUN_NOT_FOUND");
     const data = z
       .object({
@@ -198,7 +198,7 @@ runsRouter.patch("/:id", requireManager, async (req: AuthedRequest, res, next) =
         action: "RUN_STATUS_CHANGED",
         entityType: "run",
         entityId: run.id,
-        payload: { status: data.status },
+        payload: { from: owned.status, to: data.status, name: owned.name },
       });
       if (data.status === "COMPLETED") {
         dispatchWebhook({
