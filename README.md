@@ -13,6 +13,8 @@ A self-hosted test management platform for manual functional QA. Organise projec
 - **Full activity log** — per-project event stream with filters.
 - **CSV export** of run results.
 - **API tokens** — personal access tokens (`ts_…` prefix, SHA-256 hashed at rest). Send as `Authorization: Bearer <token>` to call the API from CI. Token auth is read-only on the token management endpoints — tokens can't mint more tokens.
+- **Email verification** — new signups must verify their email address before signing in. A tokenized verification link (24 h TTL) is emailed on signup; the UI shows the link in dev mode. Invited, SAML, and SCIM-provisioned users are auto-verified.
+- **Two-factor authentication (TOTP)** — optional per-user 2FA. Users enable it from their Profile page (scan QR code with any TOTP app). When enabled, login requires a 6-digit code after the password step. Disabling requires the current password.
 - **Invite flow & password reset** — managers invite teammates via one-time signed links; users reset their own password from the sign-in page. Links go through SMTP (Mailpit in dev, any SMTP provider in prod), and the UI also surfaces a copyable dev link for local testing.
 - **Requirements & traceability** — first-class `Requirement` objects per project, with many-to-many links to test cases. The Coverage Matrix has a **Requirement** dimension that pivots the latest execution status per case under each linked requirement; unlinked cells are blank and linked-but-never-executed cells show `UNTESTED`.
 - **Roles** — `ADMIN` (company settings, SSO/SCIM tokens, audit log), `MANAGER` (all project work), `TESTER` (runs/executions they own, created, or are assigned to; can execute and assign), `VIEWER` (read-only across the company).
@@ -206,9 +208,18 @@ Jira is split across two screens: credentials + templates live at the **company*
 
 On a failed execution, click **Create Jira bug**. The defect is filed with the full test context (steps, failure reason, tester, environment, run name) and linked back to the execution. The button is only enabled when the company has Jira credentials saved **and** the execution's project has a Jira binding.
 
-## Inviting teammates & resetting passwords
+## Email verification, invites & password reset
 
 Outbound mail goes through SMTP. In development, the `mailpit` container in `docker-compose.yml` provides a local SMTP sink + web UI — open http://localhost:8025 to read mail sent by the app. In production, point `SMTP_URL` at your real provider (Mailgun, SES, Postmark, etc).
+
+### Signing up (email verification required)
+
+1. Fill in the signup form and submit.
+2. The server creates the company and user but does **not** sign you in. Instead, it emails a verification link valid for 24 hours. In dev mode the link is also shown in the UI.
+3. Click the verification link. The server marks the email as verified, issues a JWT, and logs you in.
+4. Until verified, login is blocked with a "please verify your email" message and a **Resend** button.
+
+Invited users, SAML-authenticated users, and SCIM-provisioned users skip verification — their email ownership is already established.
 
 ### Invite a teammate
 
@@ -216,11 +227,31 @@ Outbound mail goes through SMTP. In development, the `mailpit` container in `doc
 2. Open **Team → Invite teammate**.
 3. Fill in name, email, and role, and click **Invite**.
 4. The server issues a one-time link valid for 7 days and emails it to the invitee. In dev, the UI also shows the link for easy copy-paste.
-5. The invitee opens the link, sets their password, and is signed in directly — no second step, no shared passwords.
+5. The invitee opens the link, sets their password, and is signed in directly — no second step, no shared passwords. The account is automatically marked as email-verified.
 
 ### Forgot your password?
 
 The sign-in page has a **Forgot your password?** link. Enter your email; if it matches an account, the server issues a one-time link valid for 1 hour and emails it. The response is identical for known and unknown emails (no user enumeration).
+
+## Two-factor authentication (TOTP)
+
+2FA is opt-in per user and disabled by default.
+
+### Enabling 2FA
+
+1. Open **Profile** from the sidebar.
+2. In the **Two-factor authentication** section, click **Enable 2FA**.
+3. Scan the QR code with your authenticator app (Google Authenticator, Authy, 1Password, etc.), or enter the manual key.
+4. Type the 6-digit code from the app and click **Verify**.
+5. 2FA is now active for your account.
+
+### Signing in with 2FA
+
+After entering your email and password, a second screen asks for the 6-digit code from your authenticator app. The challenge token is valid for 5 minutes.
+
+### Disabling 2FA
+
+In **Profile → Two-factor authentication**, enter your current password and click **Disable 2FA**.
 
 ## API tokens (for CI / scripting)
 
@@ -249,11 +280,13 @@ The Coverage Matrix picks up a new dimension: select **Requirement** on the Matr
 ```
 Company
   ├── Users (MANAGER / TESTER)
+  │     ├── emailVerifiedAt, totpSecret, totpEnabledAt
   │     ├── owned TestRuns
   │     ├── assigned TestExecutions
   │     ├── Comments
   │     ├── ActivityLog entries
-  │     └── ApiTokens
+  │     ├── ApiTokens
+  │     └── EmailVerificationTokens
   ├── JiraConfig (optional, 1 per company — credentials + templates)
   └── Projects
         ├── jiraProjectKey / jiraIssueType / jiraParentEpicKey (per-project target)
@@ -321,18 +354,19 @@ backend/
     db.ts              Prisma client
     middleware/        auth, scope (tenant + tester visibility), logging, error
     lib/               s3, jira (discover + md→ADF), logger, activity, webhooks
-    routes/            auth, users, companies, projects, suites, cases,
-                       milestones, runs, executions, attachments, comments,
-                       activity, dashboard, matrix, jira, sharedSteps, webhooks
+    routes/            auth, twoFactor, users, companies, projects, suites,
+                       cases, milestones, runs, executions, attachments,
+                       comments, activity, dashboard, matrix, jira,
+                       sharedSteps, webhooks
 frontend/
   src/
     App.tsx            Router
     i18n/              en.json, fr.json — kept in sync (see CLAUDE.md)
     lib/               api, auth, status, logger, enums, markdown (safe renderer)
     components/        Layout (collapsible, company header), Comments,
-                       ActivityFeed, LanguageSwitcher,
+                       ActivityFeed, LanguageSwitcher, PasswordInput,
                        CustomFieldsEditor, SharedStepsEditor, WebhooksEditor
-    pages/             Login, Dashboard, Projects, ProjectDetail,
+    pages/             Login, VerifyEmail, Dashboard, Projects, ProjectDetail,
                        CompanySettings (company Jira creds + templates),
                        ProjectSettings (tabbed: Jira / custom fields /
                        shared steps / webhooks),
@@ -340,7 +374,8 @@ frontend/
                        connectivity / locale),
                        SuiteDetail, CaseDetail (Markdown + shared-step
                        library + custom fields), Runs (list / kanban toggle),
-                       RunDetail
+                       RunDetail, Profile (password, 2FA, avatar),
+                       Tokens, Audit, SsoSettings
 docker-compose.yml     postgres + minio + minio-init + mailpit + api + web
 ```
 
@@ -396,8 +431,10 @@ All routes live under `/api`. Authentication is required except the public endpo
 
 | Area              | Routes                                                                                                          |
 | ----------------- | --------------------------------------------------------------------------------------------------------------- |
-| Auth (public)     | `POST /auth/login`, `POST /auth/signup`, `POST /auth/forgot`, `POST /auth/reset`, `GET /auth/invite/:token`, `POST /auth/accept-invite` |
+| Auth (public)     | `POST /auth/login`, `POST /auth/signup`, `POST /auth/forgot`, `POST /auth/reset`, `GET /auth/invite/:token`, `POST /auth/accept-invite`, `POST /auth/verify-email`, `POST /auth/resend-verification` |
 | Auth (mgr)        | `POST /auth/invite`                                                                                             |
+| 2FA (public)      | `POST /2fa/authenticate`                                                                                        |
+| 2FA (auth)        | `GET /2fa/status`, `POST /2fa/setup`, `POST /2fa/confirm-setup`, `POST /2fa/disable`                            |
 | Tokens            | `GET /tokens`, `POST /tokens`, `DELETE /tokens/:id` — all require an interactive (JWT) session                  |
 | Users             | `GET /users`, `GET /users/me`, `POST /users` (mgr), `PATCH/DELETE /users/:id` (mgr)                             |
 | Companies         | `GET /companies/current`, `PATCH /companies/current` (mgr)                                                      |
@@ -435,6 +472,8 @@ All routes live under `/api`. Authentication is required except the public endpo
 - **JWTs** are signed with `JWT_SECRET`. The API refuses to start when `NODE_ENV=production` and `JWT_SECRET` is unset or equal to the default placeholder — use `openssl rand -hex 48` to generate a strong value.
 - **API tokens** (`ts_…` prefix) are stored as SHA-256 hashes — a compromised database row can't be used to impersonate the caller. Plaintext is shown exactly once at creation.
 - **Token management endpoints require a JWT session** — API-token callers can't mint, list, or revoke tokens, so a leaked token can't be used to create fresh credentials.
+- **Email verification** — new signups cannot log in until they verify their email via a tokenized link (24 h TTL, SHA-256 hashed at rest, single-use). Invited, SAML, and SCIM users are auto-verified. Resend is rate-limited and the response is identical for known/unknown emails.
+- **Two-factor authentication** — optional TOTP (RFC 6238). The secret is stored per-user; `totpEnabledAt` is `null` until setup is confirmed with a valid code. Login returns a short-lived challenge JWT (5 min) instead of a session when 2FA is active; the full session JWT is only issued after the TOTP code is verified. Disabling 2FA requires the current password.
 - **Password reset** wipes the door on both sides: every outstanding JWT for that user is revoked (via `passwordUpdatedAt` compared against the JWT's `iat`) and every API token they own is deleted. If a password leaks, a single reset kicks everyone off the account.
 - **Login is timing-neutral** — bcrypt runs even when the email is unknown so response latency can't be used to enumerate accounts.
 - **Client error pipeline** (`POST /_client-log`) is **unauthenticated by design** — browsers can't send JWTs on `navigator.sendBeacon`. It's rate-limited per IP, body-capped, and zod-validated. Identity fields (`userId`, `userEmail`, `sessionId`) are **client-asserted and never used for authorization** — only for correlating client errors to backend traces. Authz still lives on the JWT-protected `/api/*` routes.
@@ -452,6 +491,12 @@ All credential-adjacent endpoints are rate-limited per IP:
 | `POST /auth/invite`   | 1 hour | 30           |
 | `GET /auth/invite/:t` | 1 min  | 30           |
 | `POST /auth/accept-invite` | 1 min | 10      |
+| `POST /auth/verify-email`  | 1 min  | 10           |
+| `POST /auth/resend-verification` | 1 hour | 5     |
+| `POST /2fa/setup`          | 1 min  | 10           |
+| `POST /2fa/confirm-setup`  | 1 min  | 10           |
+| `POST /2fa/disable`        | 1 min  | 10           |
+| `POST /2fa/authenticate`   | 1 min  | 10           |
 
 When deployed behind a reverse proxy, set `TRUST_PROXY` (e.g. `1` for a single hop) so limits key off the real client IP instead of the proxy.
 
@@ -470,7 +515,7 @@ Set `CORS_ALLOWED_ORIGINS` to a comma-separated list of origins the browser may 
 ### Other
 
 - **Reset / invite tokens** are cryptographically random 192-bit values, SHA-256 hashed at rest, and single-use. Raw tokens are never logged — only the token row ID is.
-- **`devToken` field** in `/auth/forgot` and `/auth/invite` responses is only populated when `NODE_ENV !== "production"`, so the plaintext never leaks in prod even if the UI would still render it.
+- **`devToken` field** in `/auth/forgot`, `/auth/invite`, `/auth/signup`, and `/auth/resend-verification` responses is only populated when `NODE_ENV !== "production"`, so the plaintext never leaks in prod even if the UI would still render it.
 - **Expired `PasswordResetToken` and `InviteToken` rows** are swept every 6 hours by a background task (`backend/src/lib/cleanup.ts`), so the tables don't grow unbounded.
 - **Attachments** are stored privately in MinIO; downloads go through signed URLs served by `S3_PUBLIC_ENDPOINT`.
 - **`.env`** is gitignored by default. Never commit a populated `.env` or `seed.hapster.ts`.

@@ -1,12 +1,13 @@
-import { useRef, useState, useMemo } from "react";
+import { useRef, useState, useMemo, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
-import { LogOut, Camera, Trash2 } from "lucide-react";
+import { LogOut, Camera, Trash2, ShieldCheck, ShieldOff } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useZodForm } from "../lib/useZodForm";
+import { PasswordInput } from "../components/PasswordInput";
 import { nonEmpty, passwordPolicy } from "../lib/schemas";
 import { apiErrorMessage } from "../lib/apiError";
 import { logger } from "../lib/logger";
@@ -243,21 +244,151 @@ function PasswordSection() {
       <h2 className="text-base font-semibold mb-4">{t("profile.change_password")}</h2>
       <form noValidate onSubmit={form.handleSubmit((v) => change.mutate(v))} className="space-y-4 max-w-md">
         <Field name="currentPassword" label={t("profile.current_password")} error={form.formState.errors.currentPassword?.message}>
-          <input type="password" className="input" autoComplete="current-password" {...form.register("currentPassword")} />
+          <PasswordInput className="input" autoComplete="current-password" {...form.register("currentPassword")} />
         </Field>
         <div className="space-y-1">
           <Field name="newPassword" label={t("profile.new_password")} error={form.formState.errors.newPassword?.message}>
-            <input type="password" className="input" autoComplete="new-password" {...form.register("newPassword")} />
+            <PasswordInput className="input" autoComplete="new-password" {...form.register("newPassword")} />
           </Field>
           <PasswordStrength value={newPasswordValue} />
         </div>
         <Field name="confirmPassword" label={t("profile.confirm_password")} error={form.formState.errors.confirmPassword?.message}>
-          <input type="password" className="input" autoComplete="new-password" {...form.register("confirmPassword")} />
+          <PasswordInput className="input" autoComplete="new-password" {...form.register("confirmPassword")} />
         </Field>
         {error && <Alert>{error}</Alert>}
         {saved && <Alert tone="success">{t("profile.password_saved")}</Alert>}
         <Button type="submit" variant="primary" loading={change.isPending}>{t("profile.change_password")}</Button>
       </form>
+    </section>
+  );
+}
+
+// --- Two-factor authentication -----------------------------------------------
+
+function TwoFactorSection() {
+  const { t } = useTranslation();
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [setupData, setSetupData] = useState<{ qrDataUrl: string; secret: string } | null>(null);
+  const [code, setCode] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [disablePassword, setDisablePassword] = useState("");
+
+  useEffect(() => {
+    api.get("/2fa/status").then(({ data }) => setEnabled(data.enabled));
+  }, []);
+
+  const setup = useMutation({
+    mutationFn: async () => (await api.post("/2fa/setup", {}, { silent: true })).data,
+    onSuccess: (data: { qrDataUrl: string; secret: string }) => {
+      setSetupData(data);
+      setCode("");
+      setError(null);
+      logger.info("2fa setup initiated");
+    },
+    onError: (e) => setError(apiErrorMessage(e, t("common.something_went_wrong"))),
+  });
+
+  const confirmSetup = useMutation({
+    mutationFn: async (totp: string) => (await api.post("/2fa/confirm-setup", { code: totp }, { silent: true })).data,
+    onSuccess: () => {
+      setEnabled(true);
+      setSetupData(null);
+      setCode("");
+      setError(null);
+      logger.info("2fa enabled");
+    },
+    onError: (e) => setError(apiErrorMessage(e, t("common.something_went_wrong"))),
+  });
+
+  const disable = useMutation({
+    mutationFn: async (password: string) => (await api.post("/2fa/disable", { password }, { silent: true })).data,
+    onSuccess: () => {
+      setEnabled(false);
+      setDisablePassword("");
+      setError(null);
+      logger.info("2fa disabled");
+    },
+    onError: (e) => setError(apiErrorMessage(e, t("common.something_went_wrong"))),
+  });
+
+  if (enabled === null) return null;
+
+  return (
+    <section className="rounded-lg border border-slate-200 dark:border-slate-700 p-5">
+      <h2 className="text-base font-semibold mb-1">{t("twofa.title")}</h2>
+      <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">{t("twofa.subtitle")}</p>
+
+      {enabled && !setupData ? (
+        <div className="space-y-4 max-w-md">
+          <div className="flex items-center gap-2 text-green-700 dark:text-green-400">
+            <ShieldCheck size={18} />
+            <span className="text-sm font-medium">{t("twofa.enabled")}</span>
+          </div>
+          <div className="space-y-2">
+            <Field name="disablePassword" label={t("twofa.disable_password_label")} error={error ?? undefined}>
+              <PasswordInput
+                className="input"
+                autoComplete="current-password"
+                value={disablePassword}
+                onChange={(e) => setDisablePassword((e.target as HTMLInputElement).value)}
+              />
+            </Field>
+            <Button
+              variant="danger"
+              leftIcon={<ShieldOff size={14} />}
+              loading={disable.isPending}
+              disabled={!disablePassword}
+              onClick={() => { setError(null); disable.mutate(disablePassword); }}
+            >
+              {t("twofa.disable")}
+            </Button>
+          </div>
+        </div>
+      ) : setupData ? (
+        <div className="space-y-4 max-w-md">
+          <p className="text-sm text-slate-600 dark:text-slate-400">{t("twofa.scan_help")}</p>
+          <div className="flex justify-center">
+            <img src={setupData.qrDataUrl} alt="TOTP QR code" className="w-48 h-48 rounded-lg border border-slate-200 dark:border-slate-700" />
+          </div>
+          <div>
+            <label className="label">{t("twofa.manual_key")}</label>
+            <code className="text-xs font-mono bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded select-all break-all">{setupData.secret}</code>
+          </div>
+          <Field name="totp-confirm" label={t("twofa.code_label")} error={error ?? undefined}>
+            <input
+              type="text"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              className="input text-center text-lg tracking-widest font-mono"
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+            />
+          </Field>
+          <div className="flex gap-2">
+            <Button
+              variant="primary"
+              loading={confirmSetup.isPending}
+              disabled={code.length !== 6}
+              onClick={() => { setError(null); confirmSetup.mutate(code); }}
+            >
+              {t("twofa.verify")}
+            </Button>
+            <Button variant="secondary" onClick={() => { setSetupData(null); setCode(""); setError(null); }}>
+              {t("common.cancel")}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <Button
+          variant="secondary"
+          leftIcon={<ShieldCheck size={14} />}
+          loading={setup.isPending}
+          onClick={() => setup.mutate()}
+        >
+          {t("twofa.enable")}
+        </Button>
+      )}
     </section>
   );
 }
@@ -279,6 +410,7 @@ export function Profile() {
       <div className="space-y-4 mt-6 max-w-2xl">
         <ProfileSection />
         <PasswordSection />
+        <TwoFactorSection />
         <section className="rounded-lg border border-red-200 dark:border-red-900/40 p-5">
           <h2 className="text-base font-semibold mb-2">{t("profile.session")}</h2>
           <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">{t("profile.logout_hint")}</p>

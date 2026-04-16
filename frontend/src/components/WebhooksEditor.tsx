@@ -2,7 +2,9 @@ import { FormEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Plus, Trash2, Zap } from "lucide-react";
+import { toast } from "sonner";
 import { api } from "../lib/api";
+import { useConfirm } from "./ui/ConfirmDialog";
 import { logger } from "../lib/logger";
 import { Spinner } from "./Spinner";
 import { Badge } from "./ui/Badge";
@@ -20,6 +22,7 @@ type Webhook = {
 export function WebhooksEditor({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const confirmDialog = useConfirm();
   const [addOpen, setAddOpen] = useState(false);
   const [url, setUrl] = useState("");
   const [secret, setSecret] = useState("");
@@ -50,6 +53,7 @@ export function WebhooksEditor({ projectId, canEdit }: { projectId: string; canE
       setSecret("");
       setSelected([]);
       setErr(null);
+      toast.success(t("webhooks.created"));
       logger.info("webhook created", { projectId });
     },
     onError: (e: any) => setErr(e.response?.data?.error ?? "Save failed"),
@@ -58,17 +62,26 @@ export function WebhooksEditor({ projectId, canEdit }: { projectId: string; canE
   const toggle = useMutation({
     mutationFn: async (hook: Webhook) =>
       (await api.patch(`/webhooks/${hook.id}`, { active: !hook.active })).data,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["webhooks", projectId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["webhooks", projectId] });
+      toast.success(t("common.saved"));
+    },
   });
 
   const remove = useMutation({
     mutationFn: async (hookId: string) => api.delete(`/webhooks/${hookId}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["webhooks", projectId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["webhooks", projectId] });
+      toast.success(t("common.deleted"));
+    },
   });
 
   const test = useMutation({
     mutationFn: async (hookId: string) => (await api.post(`/webhooks/${hookId}/test`)).data,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["webhooks", projectId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["webhooks", projectId] });
+      toast.success(t("webhooks.test_sent"));
+    },
   });
 
   function onSubmit(e: FormEvent) {
@@ -167,7 +180,7 @@ export function WebhooksEditor({ projectId, canEdit }: { projectId: string; canE
                   </button>
                   <button
                     className="btn-secondary text-red-600"
-                    onClick={() => { if (confirm(t("webhooks.delete_confirm"))) remove.mutate(h.id); }}
+                    onClick={async () => { if (await confirmDialog({ title: t("webhooks.delete_confirm"), confirmLabel: t("common.delete"), tone: "danger" })) remove.mutate(h.id); }}
                     disabled={remove.isPending && remove.variables === h.id}
                   >
                     {remove.isPending && remove.variables === h.id

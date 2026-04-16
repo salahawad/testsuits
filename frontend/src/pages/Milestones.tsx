@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, Plus, Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
+import { toast } from "sonner";
 import { api } from "../lib/api";
 import { Field } from "../components/Field";
 import { useZodForm } from "../lib/useZodForm";
@@ -70,13 +71,19 @@ export function Milestones() {
 
   const remove = useMutation({
     mutationFn: async (mid: string) => api.delete(`/milestones/${mid}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["milestones", id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["milestones", id] });
+      toast.success(t("common.deleted"));
+    },
   });
 
   const updateStatus = useMutation({
     mutationFn: async ({ mid, status }: { mid: string; status: string }) =>
       (await api.patch(`/milestones/${mid}`, { status })).data,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["milestones", id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["milestones", id] });
+      toast.success(t("common.saved"));
+    },
   });
 
   function closeForm() {

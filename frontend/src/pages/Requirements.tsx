@@ -3,6 +3,8 @@ import { Link, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft, Plus, Trash2, ExternalLink } from "lucide-react";
+import { toast } from "sonner";
+import { useConfirm } from "../components/ui/ConfirmDialog";
 import { z } from "zod";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -33,6 +35,7 @@ export function Requirements() {
   const { id: projectId } = useParams<{ id: string }>();
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const confirmDialog = useConfirm();
   const user = useAuth((s) => s.user);
   const isManager = user?.role === "MANAGER" || user?.role === "ADMIN";
 
@@ -69,7 +72,10 @@ export function Requirements() {
 
   const remove = useMutation({
     mutationFn: async (id: string) => api.delete(`/requirements/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["requirements", projectId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["requirements", projectId] });
+      toast.success(t("common.deleted"));
+    },
   });
 
   const isUrl = (ref: string) => /^https?:\/\//.test(ref);
@@ -166,7 +172,7 @@ export function Requirements() {
               {isManager && (
                 <button
                   className="text-slate-400 hover:text-red-600"
-                  onClick={() => { if (confirm(t("common.delete") + "?")) remove.mutate(r.id); }}
+                  onClick={async () => { if (await confirmDialog({ title: t("requirement.delete_confirm"), confirmLabel: t("common.delete"), tone: "danger" })) remove.mutate(r.id); }}
                 >
                   <Trash2 size={14} />
                 </button>

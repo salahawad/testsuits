@@ -113,6 +113,7 @@ samlRouter.post("/:slug/acs", async (req, res, next) => {
         passwordHash: "saml-only",
         role: cfg.defaultRole,
         companyId: company.id,
+        emailVerifiedAt: new Date(), // SSO-authenticated users are verified by the IdP.
       },
     });
     const token = signToken({ id: user.id, email: user.email, role: user.role, companyId: user.companyId });

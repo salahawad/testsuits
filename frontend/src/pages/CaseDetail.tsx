@@ -27,6 +27,7 @@ import { Comments } from "../components/Comments";
 import { Markdown } from "../lib/markdown";
 import { RichEditor } from "../components/RichEditor";
 import { PageLoader, Spinner } from "../components/Spinner";
+import { useConfirm } from "../components/ui/ConfirmDialog";
 import { Badge } from "../components/ui/Badge";
 import { logger } from "../lib/logger";
 import { apiErrorMessage } from "../lib/apiError";
@@ -46,6 +47,7 @@ export function CaseDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const confirmDialog = useConfirm();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<any>(null);
   const [stepIds, setStepIds] = useState<string[]>([]);
@@ -154,12 +156,18 @@ export function CaseDetail() {
       form.append("caseId", id!);
       return (await api.post("/attachments", form)).data;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["case", id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["case", id] });
+      toast.success(t("cases.upload_done"));
+    },
   });
 
   const deleteAttachment = useMutation({
     mutationFn: async (attId: string) => api.delete(`/attachments/${attId}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["case", id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["case", id] });
+      toast.success(t("common.deleted"));
+    },
   });
 
   async function onDownload(attId: string) {
@@ -240,7 +248,7 @@ export function CaseDetail() {
             <button
               className="btn-secondary text-red-600"
               disabled={remove.isPending}
-              onClick={() => { if (confirm(t("cases.delete_confirm"))) remove.mutate(); }}
+              onClick={async () => { if (await confirmDialog({ title: t("cases.delete_confirm"), confirmLabel: t("common.delete"), tone: "danger" })) remove.mutate(); }}
             >
               {remove.isPending ? <Spinner size={14} className="text-red-600" /> : <Trash2 size={14} />}
             </button>
@@ -647,6 +655,7 @@ function LinkedRequirements({
       qc.invalidateQueries({ queryKey: ["case", caseId] });
       qc.invalidateQueries({ queryKey: ["requirements", projectId] });
       setPickId("");
+      toast.success(t("requirement.linked"));
     },
   });
 
@@ -655,6 +664,7 @@ function LinkedRequirements({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["case", caseId] });
       qc.invalidateQueries({ queryKey: ["requirements", projectId] });
+      toast.success(t("requirement.unlinked"));
     },
   });
 

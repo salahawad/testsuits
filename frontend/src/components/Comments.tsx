@@ -1,12 +1,15 @@
 import { FormEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Trash2 } from "lucide-react";
+import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 
 type Target = { caseId?: string; executionId?: string; runId?: string };
 
 export function Comments({ target }: { target: Target }) {
+  const { t } = useTranslation();
   const qc = useQueryClient();
   const user = useAuth((s) => s.user);
   const [body, setBody] = useState("");
@@ -27,7 +30,10 @@ export function Comments({ target }: { target: Target }) {
 
   const remove = useMutation({
     mutationFn: async (id: string) => api.delete(`/comments/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: key }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: key });
+      toast.success(t("common.deleted"));
+    },
   });
 
   function onSubmit(e: FormEvent) {

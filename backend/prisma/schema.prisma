@@ -128,7 +128,13 @@ model User {
   // Bumped on password change / forced sign-out. Any JWT with iat < this value
   // is treated as revoked, even if not yet expired.
   passwordUpdatedAt DateTime?
+  emailVerifiedAt DateTime?
   avatarKey       String?
+  failedAttempts  Int                  @default(0)
+  lockedUntil     DateTime?
+  // TOTP two-factor authentication (opt-in per user).
+  totpSecret      String?
+  totpEnabledAt   DateTime?
   role            Role                 @default(TESTER)
   companyId       String
   company         Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
@@ -142,10 +148,23 @@ model User {
   apiTokens       ApiToken[]
   sharedSteps     SharedStep[]
   resetTokens     PasswordResetToken[]
+  emailVerifyTokens EmailVerificationToken[]
   sentInvites     InviteToken[]        @relation("InvitedBy")
 }
 
 model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash String   @unique
+  expiresAt DateTime
+  consumedAt DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId, expiresAt])
+}
+
+model EmailVerificationToken {
   id        String   @id @default(cuid())
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)

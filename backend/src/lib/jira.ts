@@ -1,6 +1,7 @@
 import { prisma } from "../db";
 import { httpError } from "../middleware/error";
 import { logger } from "./logger";
+import { appUrl } from "./mailer";
 
 type AdfNode = Record<string, unknown>;
 type AdfDoc = { type: "doc"; version: 1; content: AdfNode[] };
@@ -29,13 +30,16 @@ export const DEFAULT_DESCRIPTION_TEMPLATE = [
   "",
   "## Actual result",
   "{{actualResult}}",
+  "",
+  "---",
+  "[View in TestSuits]({{executionUrl}})",
 ].join("\n");
 
 function textRuns(raw: string): AdfNode[] {
   if (!raw) return [];
-  // Bold **x**, italic *x*, inline code `x`. Plain otherwise.
+  // Bold **x**, italic *x*, inline code `x`, links [text](url). Plain otherwise.
   const out: AdfNode[] = [];
-  const pattern = /(\*\*([^*]+)\*\*|\*([^*]+)\*|`([^`]+)`)/g;
+  const pattern = /(\*\*([^*]+)\*\*|\*([^*]+)\*|`([^`]+)`|\[([^\]]+)\]\(([^)]+)\))/g;
   let last = 0;
   let m: RegExpExecArray | null;
   while ((m = pattern.exec(raw)) !== null) {
@@ -43,6 +47,7 @@ function textRuns(raw: string): AdfNode[] {
     if (m[2] !== undefined) out.push({ type: "text", text: m[2], marks: [{ type: "strong" }] });
     else if (m[3] !== undefined) out.push({ type: "text", text: m[3], marks: [{ type: "em" }] });
     else if (m[4] !== undefined) out.push({ type: "text", text: m[4], marks: [{ type: "code" }] });
+    else if (m[5] !== undefined && m[6] !== undefined) out.push({ type: "text", text: m[5], marks: [{ type: "link", attrs: { href: m[6] } }] });
     last = m.index + m[0].length;
   }
   if (last < raw.length) out.push({ type: "text", text: raw.slice(last) });
@@ -207,6 +212,8 @@ export async function createJiraBugForExecution(executionId: string) {
     .map((s, i) => `${i + 1}. ${s.action}\n   *Expected:* ${s.expected}`)
     .join("\n");
 
+  const executionUrl = `${appUrl}/runs/${execution.run.id}`;
+
   const vars: Record<string, string> = {
     caseTitle: execution.case.title,
     suiteName: execution.case.suite.name,
@@ -222,6 +229,7 @@ export async function createJiraBugForExecution(executionId: string) {
     steps: stepsText || "—",
     failureReason: execution.failureReason || execution.notes || "—",
     actualResult: execution.actualResult || "—",
+    executionUrl,
   };
 
   const summary = render(config.summaryTemplate ?? DEFAULT_SUMMARY_TEMPLATE, vars).slice(0, 250);
@@ -249,6 +257,27 @@ export async function createJiraBugForExecution(executionId: string) {
     where: { id: executionId },
     data: { jiraIssueKey: data.key, jiraIssueUrl: issueUrl },
   });
+
+  // Create a remote link in Jira back to the TestSuits execution.
+  try {
+    await jiraFetch(config, `/rest/api/3/issue/${data.key}/remotelink`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        globalId: `testsuits:execution:${executionId}`,
+        application: { type: "com.testsuits", name: "TestSuits" },
+        relationship: "tested by",
+        object: {
+          url: executionUrl,
+          title: `${execution.case.title} — ${execution.run.name}`,
+          icon: { url16x16: `${appUrl}/favicon.svg`, title: "TestSuits" },
+        },
+      }),
+    });
+  } catch (e) {
+    // Non-fatal — the bug was created, backlink is a nice-to-have.
+    logger.warn({ jiraKey: data.key, err: (e as Error).message }, "failed to create jira remote link");
+  }
 
   logger.info(
     { executionId, jiraKey: data.key, jiraProject: project.jiraProjectKey, parentEpic: project.jiraParentEpicKey },

@@ -11,11 +11,15 @@ export type User = {
   company: Company;
 };
 
+export type LoginResult =
+  | { kind: "session"; token: string; user: User }
+  | { kind: "2fa"; challengeToken: string };
+
 type AuthState = {
   user: User | null;
   token: string | null;
-  login: (email: string, password: string) => Promise<void>;
-  signup: (email: string, password: string, name: string, companyName: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<LoginResult>;
+  signup: (email: string, password: string, name: string, companyName: string) => Promise<{ devToken?: string }>;
   setSession: (token: string, user: User) => void;
   updateUser: (patch: Partial<User>) => void;
   logout: () => void;
@@ -33,16 +37,18 @@ export const useAuth = create<AuthState>((set) => ({
   user: storedUser,
   token: localStorage.getItem("token"),
   login: async (email, password) => {
-    const { data } = await api.post("/auth/login", { email, password });
+    const { data } = await api.post("/auth/login", { email, password }, { silent: true });
+    if (data.requires2fa) {
+      return { kind: "2fa", challengeToken: data.challengeToken };
+    }
     localStorage.setItem("token", data.token);
     localStorage.setItem("user", JSON.stringify(data.user));
     set({ user: data.user, token: data.token });
+    return { kind: "session", token: data.token, user: data.user };
   },
   signup: async (email, password, name, companyName) => {
-    const { data } = await api.post("/auth/signup", { email, password, name, companyName });
-    localStorage.setItem("token", data.token);
-    localStorage.setItem("user", JSON.stringify(data.user));
-    set({ user: data.user, token: data.token });
+    const { data } = await api.post("/auth/signup", { email, password, name, companyName }, { silent: true });
+    return { devToken: data.devToken };
   },
   setSession: (token, user) => {
     localStorage.setItem("token", token);

@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, Navigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft, RefreshCw, X } from "lucide-react";
+import { toast } from "sonner";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { logger } from "../lib/logger";
@@ -49,6 +50,7 @@ export function ProjectSettings() {
   });
   const [projectQuery, setProjectQuery] = useState("");
   const [epicQuery, setEpicQuery] = useState("");
+  const [editingJira, setEditingJira] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const { data: binding } = useQuery<ProjectBinding | null>({
@@ -109,9 +111,15 @@ export function ProjectSettings() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["jira-binding", id] });
       setErr(null);
+      setEditingJira(false);
+      toast.success(t("common.saved"));
       logger.info("project jira binding saved", { projectId: id, key: form.jiraProjectKey, epic: form.jiraParentEpicKey });
     },
-    onError: (e: any) => setErr(e.response?.data?.error ?? "Save failed"),
+    onError: (e: any) => {
+      const msg = e.response?.data?.error ?? t("common.something_went_wrong");
+      setErr(msg);
+      toast.error(msg);
+    },
   });
 
   function onSubmit(e: FormEvent) {
@@ -183,15 +191,52 @@ export function ProjectSettings() {
         </div>
       )}
 
-      {tab === "jira" && (
+      {tab === "jira" && form.jiraProjectKey && !editingJira && (
+      <div className="card p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="font-semibold">{t("jira.target_project")}</h2>
+          <button type="button" className="btn-secondary text-xs" onClick={() => setEditingJira(true)}>
+            {t("common.edit")}
+          </button>
+        </div>
+        <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-3 text-sm">
+          <div>
+            <dt className="text-slate-500 dark:text-slate-400">{t("jira.jira_project")}</dt>
+            <dd className="font-medium">{form.jiraProjectName || form.jiraProjectKey} <span className="text-slate-400">({form.jiraProjectKey})</span></dd>
+          </div>
+          <div>
+            <dt className="text-slate-500 dark:text-slate-400">{t("jira.issue_type")}</dt>
+            <dd className="font-medium">{form.jiraIssueType || t("jira.use_company_default", { type: companyConfig?.defaultIssueType ?? "Bug" })}</dd>
+          </div>
+          {form.jiraParentEpicKey && (
+            <div className="sm:col-span-2">
+              <dt className="text-slate-500 dark:text-slate-400">{t("jira.parent_epic")}</dt>
+              <dd className="font-medium flex items-center gap-2">
+                <span className="badge bg-violet-100 text-violet-800 dark:bg-violet-500/15 dark:text-violet-300">{form.jiraParentEpicKey}</span>
+                {form.jiraParentEpicSummary}
+              </dd>
+            </div>
+          )}
+        </dl>
+      </div>
+      )}
+
+      {tab === "jira" && (!form.jiraProjectKey || editingJira) && (
       <form noValidate onSubmit={onSubmit} className="card p-5 space-y-5">
         <div className="flex items-center justify-between">
           <h2 className="font-semibold">{t("jira.target_project")}</h2>
-          {form.jiraProjectKey && isManager && (
-            <button type="button" className="text-xs text-slate-500 hover:text-red-600" onClick={clearBinding}>
-              {t("jira.clear_binding")}
-            </button>
-          )}
+          <div className="flex gap-2">
+            {editingJira && form.jiraProjectKey && (
+              <button type="button" className="text-xs text-slate-500 hover:text-slate-700" onClick={() => setEditingJira(false)}>
+                {t("common.cancel")}
+              </button>
+            )}
+            {form.jiraProjectKey && isManager && (
+              <button type="button" className="text-xs text-slate-500 hover:text-red-600" onClick={clearBinding}>
+                {t("jira.clear_binding")}
+              </button>
+            )}
+          </div>
         </div>
 
         <p className="text-xs text-slate-500 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded p-3">

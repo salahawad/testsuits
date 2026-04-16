@@ -2,8 +2,10 @@ import { FormEvent, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Copy, ShieldCheck, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { useConfirm } from "../components/ui/ConfirmDialog";
 
 type SamlConfig = {
   entityId: string;
@@ -32,6 +34,7 @@ export function SsoSettings() {
     defaultRole: "TESTER" as SamlConfig extends null ? never : "ADMIN" | "MANAGER" | "TESTER" | "VIEWER",
     enabled: false,
   });
+  const confirmDialog = useConfirm();
   const [err, setErr] = useState<string | null>(null);
   const [tokenName, setTokenName] = useState("");
   const [newToken, setNewToken] = useState<string | null>(null);
@@ -59,7 +62,11 @@ export function SsoSettings() {
 
   const save = useMutation({
     mutationFn: async () => (await api.put("/saml/config", form)).data,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["saml-config"] }); setErr(null); },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["saml-config"] });
+      setErr(null);
+      toast.success(t("common.saved"));
+    },
     onError: (e: any) => setErr(e.response?.data?.error ?? t("common.something_went_wrong")),
   });
 
@@ -75,12 +82,16 @@ export function SsoSettings() {
       setNewToken(row.token);
       setTokenName("");
       qc.invalidateQueries({ queryKey: ["scim-tokens"] });
+      toast.success(t("sso.token_created"));
     },
   });
 
   const revokeToken = useMutation({
     mutationFn: async (id: string) => api.delete(`/scim-tokens/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["scim-tokens"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["scim-tokens"] });
+      toast.success(t("common.deleted"));
+    },
   });
 
   function onSubmit(e: FormEvent) {
@@ -221,7 +232,7 @@ export function SsoSettings() {
                 </div>
                 <button
                   className="text-slate-400 hover:text-red-600"
-                  onClick={() => { if (confirm(t("sso.revoke_confirm"))) revokeToken.mutate(tk.id); }}
+                  onClick={async () => { if (await confirmDialog({ title: t("sso.revoke_confirm"), confirmLabel: t("common.delete"), tone: "danger" })) revokeToken.mutate(tk.id); }}
                 >
                   <Trash2 size={16} />
                 </button>

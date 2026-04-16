@@ -4,13 +4,16 @@ import bcrypt from "bcryptjs";
 import { randomBytes, createHash } from "crypto";
 import { z } from "zod";
 import { prisma } from "../db";
-import { AuthedRequest, requireAuth, requireManager, signToken } from "../middleware/auth";
+import { AuthedRequest, requireAuth, requireManager, signChallengeToken, signToken } from "../middleware/auth";
 import { httpError } from "../middleware/error";
 import { logger } from "../lib/logger";
 import { appUrl, sendEmail } from "../lib/mailer";
 
-const RESET_TTL_MS = 60 * 60 * 1000;           // 1 hour
-const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const RESET_TTL_MS = 60 * 60 * 1000;              // 1 hour
+const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;    // 7 days
+const VERIFY_EMAIL_TTL_MS = 24 * 60 * 60 * 1000;  // 24 hours
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MS = 15 * 60 * 1000;        // 15 minutes
 
 // Stable bcrypt hash used as a timing shield when login can't find the user.
 // Generated once at boot for "invalid-password-but-valid-shape" so attackers
@@ -39,6 +42,8 @@ const resetLimiter = rateLimit({ windowMs: 60_000, max: 10, ...limiterCommon });
 const inviteLimiter = rateLimit({ windowMs: 60 * 60_000, max: 30, ...limiterCommon });
 const invitePreviewLimiter = rateLimit({ windowMs: 60_000, max: 30, ...limiterCommon });
 const acceptInviteLimiter = rateLimit({ windowMs: 60_000, max: 10, ...limiterCommon });
+const verifyEmailLimiter = rateLimit({ windowMs: 60_000, max: 10, ...limiterCommon });
+const resendVerifyLimiter = rateLimit({ windowMs: 60 * 60_000, max: 5, ...limiterCommon });
 
 export const authRouter = Router();
 
@@ -66,6 +71,30 @@ const passwordPolicy = z
   .max(128, "Password must be at most 128 characters")
   .refine((p) => !COMMON_PASSWORDS.has(p.toLowerCase()), "That password is too common. Pick a less obvious one.");
 
+// --- Email verification helper ---------------------------------------------
+
+async function createAndSendVerification(user: { id: string; email: string; name: string }): Promise<string> {
+  const raw = newRawToken();
+  await prisma.emailVerificationToken.create({
+    data: {
+      userId: user.id,
+      tokenHash: hashToken(raw),
+      expiresAt: new Date(Date.now() + VERIFY_EMAIL_TTL_MS),
+    },
+  });
+  const verifyLink = `${appUrl}/verify-email/${raw}`;
+  logger.info({ userId: user.id }, "email verification token issued");
+  await sendEmail({
+    to: user.email,
+    subject: "Verify your TestSuits email",
+    text: `Hi ${user.name},\n\nPlease verify your email address by clicking the link below (valid for 24 hours):\n\n${verifyLink}\n\nIf you didn't create this account, you can ignore this email.\n`,
+    html: `<p>Hi ${user.name},</p><p>Please verify your email address by clicking the link below (valid for 24 hours):</p><p><a href="${verifyLink}">${verifyLink}</a></p><p>If you didn't create this account, you can ignore this email.</p>`,
+  });
+  return raw;
+}
+
+// --- Login -----------------------------------------------------------------
+
 authRouter.post("/login", loginLimiter, async (req, res, next) => {
   try {
     const { email, password } = loginSchema.parse(req.body);
@@ -73,14 +102,66 @@ authRouter.post("/login", loginLimiter, async (req, res, next) => {
     // Run bcrypt.compare unconditionally so response latency doesn't reveal
     // whether the email exists.
     const ok = await bcrypt.compare(password, user?.passwordHash ?? TIMING_SHIELD_HASH);
+
     if (!user) {
       logger.warn({ email, reason: "user_not_found" }, "login failed");
       throw httpError(401, "Invalid credentials");
     }
+
+    // --- Per-account lockout ---
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      const minutesLeft = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60_000);
+      logger.warn({ email, userId: user.id, reason: "account_locked", minutesLeft }, "login rejected (locked)");
+      throw httpError(423, `Account is temporarily locked. Try again in ${minutesLeft} minute${minutesLeft === 1 ? "" : "s"}.`);
+    }
+
     if (!ok) {
-      logger.warn({ email, userId: user.id, reason: "bad_password" }, "login failed");
+      const attempts = user.failedAttempts + 1;
+      const justLocked = attempts >= MAX_LOGIN_ATTEMPTS;
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          failedAttempts: attempts,
+          ...(justLocked ? { lockedUntil: new Date(Date.now() + LOCKOUT_DURATION_MS) } : {}),
+        },
+      });
+      logger.warn({ email, userId: user.id, reason: "bad_password", attempts }, "login failed");
+
+      if (justLocked) {
+        logger.warn({ userId: user.id, email, lockoutMinutes: LOCKOUT_DURATION_MS / 60_000 }, "account locked after repeated failures");
+        sendEmail({
+          to: user.email,
+          subject: "Your TestSuits account has been temporarily locked",
+          text: `Hi ${user.name},\n\nWe detected ${MAX_LOGIN_ATTEMPTS} consecutive failed login attempts on your account. As a precaution, your account has been locked for 15 minutes.\n\nIf this wasn't you, we recommend resetting your password:\n${appUrl}/forgot\n\nIf it was you, simply wait 15 minutes and try again.\n`,
+          html: `<p>Hi ${user.name},</p><p>We detected <strong>${MAX_LOGIN_ATTEMPTS} consecutive failed login attempts</strong> on your account. As a precaution, your account has been locked for 15 minutes.</p><p>If this wasn't you, we recommend <a href="${appUrl}/forgot">resetting your password</a>.</p><p>If it was you, simply wait 15 minutes and try again.</p>`,
+        });
+        throw httpError(423, "Account is temporarily locked due to too many failed attempts. Check your email for details.");
+      }
+
       throw httpError(401, "Invalid credentials");
     }
+
+    // Successful login — reset lockout state.
+    if (user.failedAttempts > 0 || user.lockedUntil) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: { failedAttempts: 0, lockedUntil: null },
+      });
+    }
+
+    // Gate: email not verified yet.
+    if (!user.emailVerifiedAt) {
+      logger.warn({ userId: user.id, email: user.email }, "login blocked — email not verified");
+      return res.status(403).json({ error: "Please verify your email address before signing in.", code: "EMAIL_NOT_VERIFIED" });
+    }
+
+    // Gate: 2FA enabled — issue a short-lived challenge token instead of a session.
+    if (user.totpEnabledAt) {
+      const challengeToken = signChallengeToken(user.id);
+      logger.info({ userId: user.id }, "login paused — 2FA challenge issued");
+      return res.json({ requires2fa: true, challengeToken });
+    }
+
     const token = signToken({
       id: user.id,
       email: user.email,
@@ -122,6 +203,7 @@ function slugify(s: string) {
 
 // Public signup: creates a new Company and makes the signer its first MANAGER.
 // There is no super-admin — every account lives inside exactly one company.
+// The user must verify their email before they can sign in.
 authRouter.post("/signup", signupLimiter, async (req, res, next) => {
   try {
     const { email, password, name, companyName } = signupSchema.parse(req.body);
@@ -145,28 +227,16 @@ authRouter.post("/signup", signupLimiter, async (req, res, next) => {
           passwordHash,
           role: "MANAGER",
           companyId: company.id,
+          // emailVerifiedAt intentionally null — user must verify via email.
         },
       });
       return { user, company };
     });
 
-    const token = signToken({
-      id: user.id,
-      email: user.email,
-      role: user.role,
-      companyId: company.id,
-    });
-    logger.info({ userId: user.id, companyId: company.id, slug: company.slug }, "company signup");
-    res.status(201).json({
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        role: user.role,
-        company: { id: company.id, name: company.name, slug: company.slug },
-      },
-    });
+    logger.info({ userId: user.id, companyId: company.id, slug: company.slug }, "company signup — verification email pending");
+    const devToken = await createAndSendVerification(user);
+    const leak = process.env.NODE_ENV !== "production" ? { devToken } : {};
+    res.status(201).json({ ok: true, ...leak });
   } catch (e) {
     next(e);
   }
@@ -234,7 +304,7 @@ authRouter.post("/reset", resetLimiter, async (req, res, next) => {
       // that may have been leaked alongside the password.
       prisma.user.update({
         where: { id: row.userId },
-        data: { passwordHash, passwordUpdatedAt: now },
+        data: { passwordHash, passwordUpdatedAt: now, failedAttempts: 0, lockedUntil: null },
       }),
       prisma.apiToken.deleteMany({ where: { userId: row.userId } }),
       prisma.passwordResetToken.update({ where: { id: row.id }, data: { consumedAt: now } }),
@@ -246,6 +316,83 @@ authRouter.post("/reset", resetLimiter, async (req, res, next) => {
     ]);
     logger.info({ userId: row.userId }, "password reset consumed; JWT + API tokens revoked");
     res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// --- Email verification ----------------------------------------------------
+
+const verifyEmailSchema = z.object({ token: z.string().min(10) });
+
+authRouter.post("/verify-email", verifyEmailLimiter, async (req, res, next) => {
+  try {
+    const { token } = verifyEmailSchema.parse(req.body);
+    const row = await prisma.emailVerificationToken.findUnique({
+      where: { tokenHash: hashToken(token) },
+      include: { user: { include: { company: true } } },
+    });
+    if (!row || row.consumedAt || row.expiresAt < new Date()) {
+      throw httpError(400, "Verification link is invalid or expired");
+    }
+    const now = new Date();
+    await prisma.$transaction([
+      prisma.user.update({
+        where: { id: row.userId },
+        data: { emailVerifiedAt: now },
+      }),
+      prisma.emailVerificationToken.update({
+        where: { id: row.id },
+        data: { consumedAt: now },
+      }),
+      // Consume all other outstanding verification tokens for this user.
+      prisma.emailVerificationToken.updateMany({
+        where: { userId: row.userId, consumedAt: null, id: { not: row.id } },
+        data: { consumedAt: now },
+      }),
+    ]);
+    const jwt = signToken({
+      id: row.user.id,
+      email: row.user.email,
+      role: row.user.role,
+      companyId: row.user.companyId,
+    });
+    logger.info({ userId: row.userId }, "email verified");
+    res.json({
+      token: jwt,
+      user: {
+        id: row.user.id,
+        email: row.user.email,
+        name: row.user.name,
+        role: row.user.role,
+        company: { id: row.user.company.id, name: row.user.company.name, slug: row.user.company.slug },
+      },
+    });
+  } catch (e) {
+    next(e);
+  }
+});
+
+const resendVerifySchema = z.object({ email: z.string().email() });
+
+authRouter.post("/resend-verification", resendVerifyLimiter, async (req, res, next) => {
+  try {
+    const { email } = resendVerifySchema.parse(req.body);
+    const user = await prisma.user.findUnique({ where: { email } });
+    let devToken: string | undefined;
+    if (user && !user.emailVerifiedAt) {
+      // Invalidate previous verification tokens.
+      await prisma.emailVerificationToken.updateMany({
+        where: { userId: user.id, consumedAt: null },
+        data: { consumedAt: new Date() },
+      });
+      devToken = await createAndSendVerification(user);
+      logger.info({ userId: user.id }, "verification email resent");
+    } else {
+      logger.info({ email }, "resend-verification for unknown/already-verified email (silent)");
+    }
+    const leak = process.env.NODE_ENV !== "production" ? { devToken } : {};
+    res.json({ ok: true, ...leak });
   } catch (e) {
     next(e);
   }
@@ -348,6 +495,7 @@ authRouter.post("/accept-invite", acceptInviteLimiter, async (req, res, next) =>
           passwordHash,
           role: row.role,
           companyId: row.companyId,
+          emailVerifiedAt: new Date(), // Clicking the invite link proves email ownership.
         },
       });
       await tx.inviteToken.update({ where: { id: row.id }, data: { acceptedAt: new Date() } });

@@ -26,7 +26,7 @@ api.interceptors.request.use((config) => {
 // Paths that opt OUT of the global error toast — those that surface errors
 // inline via their own UI (login/reset/invite/forgot). Everything else gets a
 // toast so transient failures don't vanish silently.
-const SILENT_PATHS = ["/auth/login", "/auth/signup", "/auth/forgot", "/auth/reset", "/auth/accept-invite"];
+const SILENT_PATHS = ["/auth/login", "/auth/signup", "/auth/forgot", "/auth/reset", "/auth/accept-invite", "/auth/verify-email", "/auth/resend-verification", "/2fa/authenticate"];
 
 // Key used to pass a reason from an interceptor-forced redirect into the next
 // login render (so "session revoked" is surfaced once there, then cleared).

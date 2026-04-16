@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Copy, Plus, Trash2 } from "lucide-react";
 import { z } from "zod";
+import { toast } from "sonner";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { logger } from "../lib/logger";
@@ -58,6 +59,7 @@ export function Team() {
       setOpen(false);
       form.reset({ email: "", name: "", role: "TESTER" });
       setSubmitError(null);
+      toast.success(t("team.invite_sent"));
       logger.info("teammate invite created");
     },
     onError: (e: unknown) => setSubmitError(apiErrorMessage(e, "Invite failed")),
@@ -65,13 +67,19 @@ export function Team() {
 
   const remove = useMutation({
     mutationFn: async (id: string) => api.delete(`/users/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["users"] });
+      toast.success(t("team.member_removed"));
+    },
   });
 
   const changeRole = useMutation({
     mutationFn: async ({ id, role }: { id: string; role: string }) =>
       (await api.patch(`/users/${id}`, { role })).data,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["users"] });
+      toast.success(t("team.role_updated"));
+    },
   });
 
   const isManager = user?.role === "MANAGER" || user?.role === "ADMIN";

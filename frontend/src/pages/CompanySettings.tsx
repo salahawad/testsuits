@@ -1,9 +1,11 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { logger } from "../lib/logger";
+import { useConfirm } from "../components/ui/ConfirmDialog";
 import { Spinner } from "../components/Spinner";
 
 type CompanyJiraConfig = {
@@ -20,6 +22,7 @@ export function CompanySettings() {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const user = useAuth((s) => s.user);
+  const confirmDialog = useConfirm();
   const isManager = user?.role === "MANAGER";
 
   const [form, setForm] = useState({
@@ -70,9 +73,14 @@ export function CompanySettings() {
       qc.invalidateQueries({ queryKey: ["jira-config"] });
       setErr(null);
       setForm((f) => ({ ...f, apiToken: "" }));
+      toast.success(t("common.saved"));
       logger.info("jira company config saved");
     },
-    onError: (e: any) => setErr(e.response?.data?.error ?? "Save failed"),
+    onError: (e: any) => {
+      const msg = e.response?.data?.error ?? t("common.something_went_wrong");
+      setErr(msg);
+      toast.error(msg);
+    },
   });
 
   const test = useMutation({
@@ -83,7 +91,10 @@ export function CompanySettings() {
 
   const remove = useMutation({
     mutationFn: async () => api.delete(`/jira/config`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["jira-config"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["jira-config"] });
+      toast.success(t("jira.config_removed"));
+    },
   });
 
   function onSubmit(e: FormEvent) {
@@ -184,7 +195,7 @@ export function CompanySettings() {
               type="button"
               className="btn-secondary text-red-600"
               disabled={remove.isPending}
-              onClick={() => { if (confirm(t("jira.remove_confirm"))) remove.mutate(); }}
+              onClick={async () => { if (await confirmDialog({ title: t("jira.remove_confirm"), confirmLabel: t("common.delete"), tone: "danger" })) remove.mutate(); }}
             >
               {remove.isPending && <Spinner size={14} className="text-red-600" />}
               {t("jira.remove")}

@@ -8,6 +8,7 @@
     "save": "Save",
     "create": "Create",
     "delete": "Delete",
+    "deleted": "Deleted.",
     "edit": "Edit",
     "update": "Update",
     "close": "Close",
@@ -26,6 +27,7 @@
     "of": "of",
     "unassigned": "Unassigned",
     "please_wait": "Please wait…",
+    "saved": "Saved.",
     "something_went_wrong": "Something went wrong"
   },
   "notfound": {
@@ -66,6 +68,8 @@
     "company_name": "Company name",
     "company_name_help": "You'll become the first manager of this company. Add your team from the Team page afterwards.",
     "confirm_password": "Confirm password",
+    "show_password": "Show password",
+    "hide_password": "Hide password",
     "no_account": "No account? Create one",
     "no_company": "New here? Create a company",
     "have_account": "Already have an account? Sign in"
@@ -147,6 +151,7 @@
     "shared": "Shared",
     "no_shared_steps": "No shared steps in this project yet.",
     "saved": "Case saved.",
+    "upload_done": "File uploaded.",
     "validation": {
       "title_required": "Title is required.",
       "step_action_empty": "Step {{step}}: action cannot be empty.",
@@ -193,7 +198,8 @@
       "project_required": "Pick a project first.",
       "environment_required": "Environment is required.",
       "suite_required": "Select at least one suite."
-    }
+    },
+    "evidence_uploaded": "Evidence uploaded."
   },
   "milestones": {
     "title": "Milestones",
@@ -246,6 +252,10 @@
     "project_binding_hint": "Choose which Jira project this TestSuits project files bugs into, and optionally which epic those bugs should roll up under.",
     "need_company_config": "Jira credentials aren't set yet for this company. Configure them in",
     "cannot_discover": "Company Jira credentials are missing or disabled.",
+    "bug_created": "Jira bug created.",
+    "linked": "Jira issue linked.",
+    "unlinked": "Jira issue unlinked.",
+    "config_removed": "Jira configuration removed.",
     "clear_binding": "Clear binding",
     "use_company_default": "Use company default ({{type}})"
   },
@@ -309,7 +319,9 @@
     "test": "Send test delivery",
     "delete_confirm": "Delete this webhook?",
     "recent_deliveries": "Recent deliveries",
-    "pick_event": "Pick at least one event."
+    "pick_event": "Pick at least one event.",
+    "created": "Webhook created.",
+    "test_sent": "Test event sent."
   },
   "comments": {
     "placeholder": "Write a comment…",
@@ -326,7 +338,10 @@
     "role": "Role",
     "manager": "Manager",
     "tester": "Tester",
-    "delete_confirm": "Remove this teammate?"
+    "delete_confirm": "Remove this teammate?",
+    "invite_sent": "Invite sent.",
+    "member_removed": "Teammate removed.",
+    "role_updated": "Role updated."
   },
   "theme": {
     "light": "Light",
@@ -350,7 +365,8 @@
     "created_on": "Created {{date}}",
     "last_used": "last used {{date}}",
     "never_used": "never used",
-    "revoke_confirm": "Revoke this token? Anything using it will stop working immediately."
+    "revoke_confirm": "Revoke this token? Anything using it will stop working immediately.",
+    "revoked": "Token revoked."
   },
   "auth_reset": {
     "forgot_title": "Reset your password",
@@ -411,7 +427,8 @@
     "no_scim_tokens": "No SCIM tokens issued yet.",
     "created": "Created",
     "last_used": "Last used",
-    "revoke_confirm": "Revoke this SCIM token?"
+    "revoke_confirm": "Revoke this SCIM token?",
+    "token_created": "SCIM token created."
   },
   "audit": {
     "title": "Audit log",
@@ -458,7 +475,10 @@
     "placeholder": "e.g. en, fr, ar"
   },
   "requirement": {
-    "label": "Requirement"
+    "label": "Requirement",
+    "linked": "Requirement linked.",
+    "unlinked": "Requirement unlinked.",
+    "delete_confirm": "Delete this requirement?"
   },
   "matrix": {
     "title": "Coverage matrix",
@@ -495,6 +515,30 @@
     "link_rejected": "That URL is not allowed. Only http, https, mailto and tel links are accepted.",
     "undo": "Undo",
     "redo": "Redo"
+  },
+  "verify_email": {
+    "title": "Verify your email",
+    "verifying": "Verifying your email address…",
+    "invalid": "This verification link is invalid or has expired.",
+    "signup_sent": "Account created! Check your inbox for a verification link before signing in.",
+    "dev_link": "Dev mode — verification link:",
+    "not_verified": "Please verify your email address before signing in. Check your inbox for the verification link.",
+    "resend": "Resend verification email",
+    "resent": "Verification email sent. Check your inbox."
+  },
+  "twofa": {
+    "title": "Two-factor authentication",
+    "subtitle": "Add an extra layer of security to your account with a time-based one-time password (TOTP).",
+    "enabled": "2FA is enabled",
+    "enable": "Enable 2FA",
+    "disable": "Disable 2FA",
+    "disable_password_label": "Enter your password to disable 2FA",
+    "scan_help": "Scan this QR code with your authenticator app (Google Authenticator, Authy, 1Password, etc.).",
+    "manual_key": "Manual entry key",
+    "code_label": "6-digit code",
+    "verify": "Verify",
+    "login_title": "Two-factor authentication",
+    "login_help": "Enter the 6-digit code from your authenticator app."
   },
   "profile": {
     "title": "My Profile",

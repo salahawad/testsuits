@@ -23,6 +23,7 @@ import { clientLogRouter } from "./routes/clientLog";
 import { samlRouter } from "./routes/saml";
 import { scimRouter, scimTokensRouter } from "./routes/scim";
 import { auditRouter } from "./routes/audit";
+import { twoFactorRouter } from "./routes/twoFactor";
 import { errorHandler } from "./middleware/error";
 import { requireAuth, requireManager } from "./middleware/auth";
 import { httpLogger } from "./middleware/logging";
@@ -95,6 +96,11 @@ app.use("/api/saml", (req, _res, next) => {
   if (req.path.startsWith("/config")) return requireAuth(req as any, _res, next);
   return next();
 }, samlRouter);
+app.use("/api/2fa", (req, _res, next) => {
+  // /authenticate is public (uses challenge token); all other routes require auth.
+  if (req.path === "/authenticate") return next();
+  return requireAuth(req as any, _res, next);
+}, twoFactorRouter);
 app.use("/api/scim-tokens", requireAuth, scimTokensRouter);
 app.use("/api/scim", scimRouter); // Uses its own Bearer-token auth
 

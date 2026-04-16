@@ -5,6 +5,7 @@ import { z } from "zod";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { Field } from "../components/Field";
+import { PasswordInput } from "../components/PasswordInput";
 import { useZodForm } from "../lib/useZodForm";
 import { passwordPolicy } from "../lib/schemas";
 import { apiErrorMessage } from "../lib/apiError";
@@ -86,14 +87,14 @@ export function AcceptInvite() {
               <div><span className="text-slate-500">{t("nav.company")}:</span> <span className="font-medium">{preview.company.name}</span></div>
             </div>
             <Field name="password" label={t("auth.password")} error={form.formState.errors.password?.message}>
-              <input type="password" autoComplete="new-password" autoFocus className="input" {...form.register("password")} />
+              <PasswordInput autoComplete="new-password" autoFocus className="input" {...form.register("password")} />
             </Field>
             <Field
               name="confirm"
               label={t("auth.confirm_password", { defaultValue: "Confirm password" })}
               error={form.formState.errors.confirm?.message}
             >
-              <input type="password" autoComplete="new-password" className="input" {...form.register("confirm")} />
+              <PasswordInput autoComplete="new-password" className="input" {...form.register("confirm")} />
             </Field>
             {submitError && <div role="alert" className="text-sm text-red-600">{submitError}</div>}
             <button type="submit" className="btn-primary w-full" disabled={form.formState.isSubmitting}>

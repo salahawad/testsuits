@@ -8,6 +8,7 @@ import { Markdown } from "../lib/markdown";
 import { RichEditor } from "./RichEditor";
 import { Spinner } from "./Spinner";
 import { logger } from "../lib/logger";
+import { useConfirm } from "./ui/ConfirmDialog";
 import { apiErrorMessage } from "../lib/apiError";
 
 type SharedStep = {
@@ -22,6 +23,7 @@ type SharedStep = {
 export function SharedStepsEditor({ projectId, canEdit }: { projectId: string; canEdit: boolean }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const confirmDialog = useConfirm();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [action, setAction] = useState("");
@@ -52,7 +54,10 @@ export function SharedStepsEditor({ projectId, canEdit }: { projectId: string; c
 
   const remove = useMutation({
     mutationFn: async (id: string) => api.delete(`/shared-steps/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["shared-steps", projectId] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["shared-steps", projectId] });
+      toast.success(t("common.deleted"));
+    },
     onError: (e: any) => toast.error(apiErrorMessage(e, t("common.something_went_wrong"))),
   });
 
@@ -131,7 +136,7 @@ export function SharedStepsEditor({ projectId, canEdit }: { projectId: string; c
                 <button
                   className="text-slate-400 hover:text-red-600 disabled:opacity-50"
                   disabled={remove.isPending && remove.variables === s.id}
-                  onClick={() => { if (confirm(t("shared_steps.delete_confirm"))) remove.mutate(s.id); }}
+                  onClick={async () => { if (await confirmDialog({ title: t("shared_steps.delete_confirm"), confirmLabel: t("common.delete"), tone: "danger" })) remove.mutate(s.id); }}
                 >
                   {remove.isPending && remove.variables === s.id
                     ? <Spinner size={16} className="text-red-600" />

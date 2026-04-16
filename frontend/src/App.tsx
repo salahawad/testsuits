@@ -27,6 +27,7 @@ import { ResetPassword } from "./pages/ResetPassword";
 import { AcceptInvite } from "./pages/AcceptInvite";
 import { Requirements } from "./pages/Requirements";
 import { Profile } from "./pages/Profile";
+import { VerifyEmail } from "./pages/VerifyEmail";
 
 function Protected({ children }: { children: React.ReactNode }) {
   const user = useAuth((s) => s.user);
@@ -65,6 +66,7 @@ export function App() {
       <Route path="/forgot-password" element={<ForgotPassword />} />
       <Route path="/reset/:token" element={<ResetPassword />} />
       <Route path="/invite/:token" element={<AcceptInvite />} />
+      <Route path="/verify-email/:token" element={<VerifyEmail />} />
       <Route path="/" element={<Protected><Dashboard /></Protected>} />
       <Route path="/projects" element={<Protected><Projects /></Protected>} />
       <Route path="/projects/:id" element={<Protected><ProjectDetail /></Protected>} />

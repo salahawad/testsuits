@@ -120,7 +120,7 @@ scimRouter.post("/v2/Users", async (req, res, next) => {
     const name = body.name?.formatted ?? [body.name?.givenName, body.name?.familyName].filter(Boolean).join(" ") ?? email;
     const role = body["urn:ietf:params:scim:schemas:extension:testsuits:2.0:User"]?.role ?? "TESTER";
     const user = await prisma.user.create({
-      data: { email, name, companyId, role, passwordHash: "scim-provisioned" },
+      data: { email, name, companyId, role, passwordHash: "scim-provisioned", emailVerifiedAt: new Date() },
     });
     logger.info({ userId: user.id, companyId, via: "scim" }, "user provisioned");
     res.status(201).json(toScimUser(user));

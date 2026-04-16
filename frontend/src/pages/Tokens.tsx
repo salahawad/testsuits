@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Copy, Plus, Trash2 } from "lucide-react";
+import { toast } from "sonner";
 import { z } from "zod";
 import { api } from "../lib/api";
 import { logger } from "../lib/logger";
@@ -56,7 +57,10 @@ export function Tokens() {
 
   const revoke = useMutation({
     mutationFn: async (id: string) => api.delete(`/tokens/${id}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tokens"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tokens"] });
+      toast.success(t("tokens.revoked"));
+    },
   });
 
   function onCopy() {

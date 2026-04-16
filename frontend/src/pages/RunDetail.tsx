@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { ChangeEvent, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Upload, Download, Trash2, ExternalLink, Bug, FileDown, Link as LinkIcon } from "lucide-react";
+import { toast } from "sonner";
 import { api } from "../lib/api";
 import { execStatusColors, runStatusColors } from "../lib/status";
 import { Badge } from "../components/ui/Badge";
@@ -40,7 +41,7 @@ export function RunDetail() {
 
   const { data: jiraConfig } = useQuery({
     queryKey: ["jira-config", run?.projectId],
-    queryFn: async () => (await api.get(`/jira/projects/${run.projectId}/config`)).data,
+    queryFn: async () => (await api.get(`/jira/projects/${run.projectId}/binding`)).data,
     enabled: !!run?.projectId,
   });
 
@@ -66,12 +67,16 @@ export function RunDetail() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["run", id] });
       qc.invalidateQueries({ queryKey: ["execution", selected] });
+      toast.success(t("common.saved"));
     },
   });
 
   const updateRun = useMutation({
     mutationFn: async (status: string) => (await api.patch(`/runs/${id}`, { status })).data,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["run", id] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["run", id] });
+      toast.success(t("common.saved"));
+    },
   });
 
   const upload = useMutation({
@@ -81,12 +86,18 @@ export function RunDetail() {
       form.append("executionId", selected!);
       return (await api.post("/attachments", form)).data;
     },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["execution", selected] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["execution", selected] });
+      toast.success(t("runs.evidence_uploaded"));
+    },
   });
 
   const deleteAttachment = useMutation({
     mutationFn: async (attId: string) => api.delete(`/attachments/${attId}`),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["execution", selected] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["execution", selected] });
+      toast.success(t("common.deleted"));
+    },
   });
 
   const createBug = useMutation({
@@ -95,6 +106,7 @@ export function RunDetail() {
       setJiraErr(null);
       qc.invalidateQueries({ queryKey: ["run", id] });
       qc.invalidateQueries({ queryKey: ["execution", selected] });
+      toast.success(t("jira.bug_created"));
     },
     onError: (e: any) => setJiraErr(e.response?.data?.error ?? "Jira bug creation failed"),
   });
@@ -104,6 +116,7 @@ export function RunDetail() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["execution", selected] });
       qc.invalidateQueries({ queryKey: ["run", id] });
+      toast.success(t("jira.linked"));
     },
   });
 
@@ -112,6 +125,7 @@ export function RunDetail() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["execution", selected] });
       qc.invalidateQueries({ queryKey: ["run", id] });
+      toast.success(t("jira.unlinked"));
     },
   });
 
@@ -157,7 +171,7 @@ export function RunDetail() {
   run.executions.forEach((e: any) => { counts[e.status]++; });
   const done = run.executions.length - counts.PENDING;
   const progress = run.executions.length > 0 ? Math.round((done / run.executions.length) * 100) : 0;
-  const jiraReady = !!jiraConfig?.enabled;
+  const jiraReady = !!jiraConfig?.jiraProjectKey;
 
   const filteredExecs = filter === "ALL" ? run.executions : run.executions.filter((e: any) => e.status === filter);
 

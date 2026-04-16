@@ -328,7 +328,7 @@ async function upsertUser(email: string, name: string, password: string, role: "
     return existing;
   }
   return prisma.user.create({
-    data: { email, name, passwordHash: await bcrypt.hash(password, 10), role, companyId },
+    data: { email, name, passwordHash: await bcrypt.hash(password, 10), role, companyId, emailVerifiedAt: new Date() },
   });
 }
 

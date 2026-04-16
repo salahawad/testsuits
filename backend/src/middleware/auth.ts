@@ -37,6 +37,20 @@ export function signToken(payload: AuthedUser) {
   return jwt.sign(payload, SECRET, { expiresIn: "7d" });
 }
 
+/** Short-lived JWT used as a 2FA challenge after password verification. */
+export function signChallengeToken(userId: string) {
+  return jwt.sign({ sub: userId, purpose: "2fa" }, SECRET, { expiresIn: "5m" });
+}
+
+/** Verify a 2FA challenge token. Returns the userId or throws. */
+export function verifyChallengeToken(token: string): string {
+  const decoded = jwt.verify(token, SECRET) as { sub?: string; purpose?: string };
+  if (decoded.purpose !== "2fa" || !decoded.sub) {
+    throw new Error("Invalid challenge token");
+  }
+  return decoded.sub;
+}
+
 export async function requireAuth(req: AuthedRequest, res: Response, next: NextFunction) {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {

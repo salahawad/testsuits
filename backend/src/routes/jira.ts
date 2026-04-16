@@ -124,10 +124,18 @@ jiraRouter.get("/discover/epics", async (req: AuthedRequest, res, next) => {
     if (!projectKey) throw httpError(400, "projectKey required");
     const q = typeof req.query.q === "string" ? req.query.q : "";
     const config = await companyConfig(req.user!.companyId);
-    const jql = `project = "${projectKey}" AND issuetype = Epic${q ? ` AND summary ~ "${q.replace(/"/g, "")}"` : ""} ORDER BY created DESC`;
+    const sanitized = q.replace(/"/g, "");
+    const keyPattern = /^[A-Z]+-\d+$/i.test(sanitized);
+    const filter = q
+      ? keyPattern
+        ? ` AND key = "${sanitized.toUpperCase()}"`
+        : ` AND summary ~ "${sanitized}"`
+      : "";
+    const jql = `project = "${projectKey}" AND issuetype = Epic${filter} ORDER BY created DESC`;
     const data = await jiraFetch<{ issues: Array<{ key: string; fields: { summary: string; status?: { name: string } } }> }>(
       config,
-      `/rest/api/3/search?jql=${encodeURIComponent(jql)}&fields=summary,status&maxResults=50`,
+      `/rest/api/3/search/jql`,
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jql, fields: ["summary", "status"], maxResults: 50 }) },
     );
     res.json(
       data.issues.map((i) => ({
