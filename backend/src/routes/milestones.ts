@@ -4,6 +4,7 @@ import { prisma } from "../db";
 import { AuthedRequest, requireManager } from "../middleware/auth";
 import { httpError } from "../middleware/error";
 import { milestoneWhere, projectWhere } from "../middleware/scope";
+import { logger } from "../lib/logger";
 
 export const milestonesRouter = Router();
 
@@ -32,9 +33,9 @@ milestonesRouter.get("/", async (req: AuthedRequest, res, next) => {
 milestonesRouter.post("/", requireManager, async (req: AuthedRequest, res, next) => {
   try {
     const data = upsert.parse(req.body);
-    if (!data.projectId) throw httpError(400, "projectId required");
+    if (!data.projectId) throw httpError(400, "PROJECT_ID_REQUIRED");
     const project = await prisma.project.findFirst({ where: projectWhere(req.user!, { id: data.projectId }), select: { id: true } });
-    if (!project) throw httpError(404, "Project not found");
+    if (!project) throw httpError(404, "PROJECT_NOT_FOUND");
     const milestone = await prisma.milestone.create({
       data: {
         projectId: data.projectId,
@@ -44,6 +45,7 @@ milestonesRouter.post("/", requireManager, async (req: AuthedRequest, res, next)
         dueDate: data.dueDate ? new Date(data.dueDate) : null,
       },
     });
+    req.log.info({ milestoneId: milestone.id, projectId: data.projectId, userId: req.user!.id }, "milestone created");
     res.status(201).json(milestone);
   } catch (e) {
     next(e);
@@ -53,7 +55,7 @@ milestonesRouter.post("/", requireManager, async (req: AuthedRequest, res, next)
 milestonesRouter.patch("/:id", requireManager, async (req: AuthedRequest, res, next) => {
   try {
     const owned = await prisma.milestone.findFirst({ where: milestoneWhere(req.user!, { id: req.params.id }), select: { id: true } });
-    if (!owned) throw httpError(404, "Milestone not found");
+    if (!owned) throw httpError(404, "MILESTONE_NOT_FOUND");
     const data = upsert.partial().parse(req.body);
     const milestone = await prisma.milestone.update({
       where: { id: req.params.id },
@@ -62,6 +64,7 @@ milestonesRouter.patch("/:id", requireManager, async (req: AuthedRequest, res, n
         dueDate: data.dueDate ? new Date(data.dueDate) : data.dueDate === null ? null : undefined,
       },
     });
+    req.log.info({ milestoneId: milestone.id, userId: req.user!.id }, "milestone updated");
     res.json(milestone);
   } catch (e) {
     next(e);
@@ -71,8 +74,9 @@ milestonesRouter.patch("/:id", requireManager, async (req: AuthedRequest, res, n
 milestonesRouter.delete("/:id", requireManager, async (req: AuthedRequest, res, next) => {
   try {
     const owned = await prisma.milestone.findFirst({ where: milestoneWhere(req.user!, { id: req.params.id }), select: { id: true } });
-    if (!owned) throw httpError(404, "Milestone not found");
+    if (!owned) throw httpError(404, "MILESTONE_NOT_FOUND");
     await prisma.milestone.delete({ where: { id: req.params.id } });
+    req.log.info({ milestoneId: req.params.id, userId: req.user!.id }, "milestone deleted");
     res.status(204).end();
   } catch (e) {
     next(e);

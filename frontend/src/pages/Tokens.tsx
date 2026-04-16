@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Copy, Plus, Trash2 } from "lucide-react";
@@ -22,10 +22,7 @@ type Token = {
   lastUsedAt: string | null;
 };
 
-const schema = z.object({
-  name: z.string().min(1, "Name is required").max(120, "Name is too long"),
-});
-type Values = z.infer<typeof schema>;
+type Values = { name: string };
 
 export function Tokens() {
   const { t } = useTranslation();
@@ -35,6 +32,10 @@ export function Tokens() {
   const [plaintext, setPlaintext] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const schema = useMemo(() => z.object({
+    name: z.string().min(1, t("validation.name_required")).max(120, t("validation.name_too_long")),
+  }), [t]);
 
   const form = useZodForm<Values>(schema, { defaultValues: { name: "" } });
 
@@ -52,14 +53,18 @@ export function Tokens() {
       setSubmitError(null);
       logger.info("api token created via UI");
     },
-    onError: (e: unknown) => setSubmitError(apiErrorMessage(e, "Create failed")),
+    onError: (e: unknown) => {
+      logger.warn("token creation failed", { err: e });
+      setSubmitError(apiErrorMessage(e, t("common.something_went_wrong")));
+    },
   });
 
   const revoke = useMutation({
     mutationFn: async (id: string) => api.delete(`/tokens/${id}`),
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       qc.invalidateQueries({ queryKey: ["tokens"] });
       toast.success(t("tokens.revoked"));
+      logger.info("api token revoked", { tokenId: id });
     },
   });
 

@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { z } from "zod";
 import { toast } from "sonner";
 import { api } from "../lib/api";
+import { logger } from "../lib/logger";
 import { Field } from "../components/Field";
 import { useZodForm } from "../lib/useZodForm";
 import { nonEmpty } from "../lib/schemas";
@@ -60,29 +61,35 @@ export function Milestones() {
         status: values.status,
         dueDate: values.dueDate ? new Date(values.dueDate).toISOString() : null,
       }, { silent: true })).data,
-    onSuccess: () => {
+    onSuccess: (_data, values) => {
       qc.invalidateQueries({ queryKey: ["milestones", id] });
       setOpen(false);
       form.reset({ name: "", description: "", dueDate: "", status: "PLANNED" });
       setSubmitError(null);
+      logger.info("milestone created", { projectId: id, name: values.name, status: values.status });
     },
-    onError: (e: unknown) => setSubmitError(apiErrorMessage(e, "Create failed")),
+    onError: (e: unknown) => {
+      setSubmitError(apiErrorMessage(e, t("common.something_went_wrong")));
+      logger.warn("milestone creation failed", { projectId: id, error: String(e) });
+    },
   });
 
   const remove = useMutation({
     mutationFn: async (mid: string) => api.delete(`/milestones/${mid}`),
-    onSuccess: () => {
+    onSuccess: (_data, mid) => {
       qc.invalidateQueries({ queryKey: ["milestones", id] });
       toast.success(t("common.deleted"));
+      logger.info("milestone removed", { milestoneId: mid, projectId: id });
     },
   });
 
   const updateStatus = useMutation({
     mutationFn: async ({ mid, status }: { mid: string; status: string }) =>
       (await api.patch(`/milestones/${mid}`, { status })).data,
-    onSuccess: () => {
+    onSuccess: (_data, variables) => {
       qc.invalidateQueries({ queryKey: ["milestones", id] });
       toast.success(t("common.saved"));
+      logger.info("milestone status updated", { milestoneId: variables.mid, status: variables.status, projectId: id });
     },
   });
 
@@ -127,7 +134,7 @@ export function Milestones() {
             </Field>
             <Field name="status" label={t("common.status")} error={form.formState.errors.status?.message}>
               <select className="input" {...form.register("status")}>
-                {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{t(`milestone_status.${s}`)}</option>)}
               </select>
             </Field>
           </div>
@@ -161,7 +168,7 @@ export function Milestones() {
                   disabled={updateStatus.isPending && updateStatus.variables?.mid === m.id}
                   onChange={(e) => updateStatus.mutate({ mid: m.id, status: e.target.value })}
                 >
-                  {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
+                  {STATUS_OPTIONS.map((s) => <option key={s} value={s}>{t(`milestone_status.${s}`)}</option>)}
                 </select>
                 <Button
                   variant="ghost"

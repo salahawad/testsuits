@@ -54,9 +54,10 @@ export function SharedStepsEditor({ projectId, canEdit }: { projectId: string; c
 
   const remove = useMutation({
     mutationFn: async (id: string) => api.delete(`/shared-steps/${id}`),
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       qc.invalidateQueries({ queryKey: ["shared-steps", projectId] });
       toast.success(t("common.deleted"));
+      logger.info("shared step removed", { sharedStepId: id, projectId });
     },
     onError: (e: any) => toast.error(apiErrorMessage(e, t("common.something_went_wrong"))),
   });

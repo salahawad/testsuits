@@ -2,6 +2,7 @@ import { NextFunction, Request, Response } from "express";
 import jwt from "jsonwebtoken";
 import { createHash } from "crypto";
 import { prisma } from "../db";
+import { logger } from "../lib/logger";
 
 export type Role = "ADMIN" | "MANAGER" | "TESTER" | "VIEWER";
 
@@ -54,7 +55,7 @@ export function verifyChallengeToken(token: string): string {
 export async function requireAuth(req: AuthedRequest, res: Response, next: NextFunction) {
   const header = req.headers.authorization;
   if (!header?.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "Unauthorized" });
+    return res.status(401).json({ error: "UNAUTHORIZED" });
   }
   const token = header.slice(7);
 
@@ -67,9 +68,10 @@ export async function requireAuth(req: AuthedRequest, res: Response, next: NextF
         where: { tokenHash },
         include: { user: true },
       });
-      if (!row) return res.status(401).json({ error: "Invalid API token" });
+      if (!row) return res.status(401).json({ error: "INVALID_API_TOKEN" });
+      if (row.user.isLocked) return res.status(423).json({ error: "ACCOUNT_LOCKED" });
       // Fire-and-forget lastUsedAt update — don't block the request.
-      prisma.apiToken.update({ where: { id: row.id }, data: { lastUsedAt: new Date() } }).catch(() => {});
+      prisma.apiToken.update({ where: { id: row.id }, data: { lastUsedAt: new Date() } }).catch((err) => logger.warn({ err, tokenId: row.id }, "failed to update API token lastUsedAt"));
       req.user = {
         id: row.user.id,
         email: row.user.email,
@@ -90,12 +92,15 @@ export async function requireAuth(req: AuthedRequest, res: Response, next: NextF
     // working until natural JWT expiry — up to 7d).
     const user = await prisma.user.findUnique({
       where: { id: decoded.id },
-      select: { passwordUpdatedAt: true },
+      select: { passwordUpdatedAt: true, isLocked: true },
     });
+    if (user?.isLocked) {
+      return res.status(423).json({ error: "ACCOUNT_LOCKED" });
+    }
     if (user?.passwordUpdatedAt) {
       const revokedAtSec = Math.floor(user.passwordUpdatedAt.getTime() / 1000);
       if (decoded.iat < revokedAtSec) {
-        return res.status(401).json({ error: "Session has been revoked. Please sign in again." });
+        return res.status(401).json({ error: "SESSION_REVOKED" });
       }
     }
     req.user = {
@@ -107,28 +112,28 @@ export async function requireAuth(req: AuthedRequest, res: Response, next: NextF
     req.authSource = "jwt";
     next();
   } catch {
-    res.status(401).json({ error: "Invalid token" });
+    res.status(401).json({ error: "INVALID_TOKEN" });
   }
 }
 
 export function requireManager(req: AuthedRequest, res: Response, next: NextFunction) {
   const r = req.user?.role;
   if (r !== "MANAGER" && r !== "ADMIN") {
-    return res.status(403).json({ error: "Manager role required" });
+    return res.status(403).json({ error: "MANAGER_ROLE_REQUIRED" });
   }
   next();
 }
 
 export function requireAdmin(req: AuthedRequest, res: Response, next: NextFunction) {
   if (req.user?.role !== "ADMIN") {
-    return res.status(403).json({ error: "Admin role required" });
+    return res.status(403).json({ error: "ADMIN_ROLE_REQUIRED" });
   }
   next();
 }
 
 export function requireWrite(req: AuthedRequest, res: Response, next: NextFunction) {
   if (req.user?.role === "VIEWER") {
-    return res.status(403).json({ error: "Read-only role" });
+    return res.status(403).json({ error: "READ_ONLY_ROLE" });
   }
   next();
 }

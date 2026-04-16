@@ -18,7 +18,7 @@ tokensRouter.get("/", async (req: AuthedRequest, res, next) => {
   try {
     // API-token callers can't manage tokens — that'd let a compromised token
     // mint more tokens. Restrict token management to interactive (JWT) sessions.
-    if (req.authSource !== "jwt") throw httpError(403, "Interactive session required");
+    if (req.authSource !== "jwt") throw httpError(403, "INTERACTIVE_SESSION_REQUIRED");
     const tokens = await prisma.apiToken.findMany({
       where: { userId: req.user!.id },
       orderBy: { createdAt: "desc" },
@@ -32,7 +32,7 @@ tokensRouter.get("/", async (req: AuthedRequest, res, next) => {
 
 tokensRouter.post("/", async (req: AuthedRequest, res, next) => {
   try {
-    if (req.authSource !== "jwt") throw httpError(403, "Interactive session required");
+    if (req.authSource !== "jwt") throw httpError(403, "INTERACTIVE_SESSION_REQUIRED");
     const { name } = createSchema.parse(req.body);
     const plaintext = generatePlaintext();
     const token = await prisma.apiToken.create({
@@ -53,9 +53,9 @@ tokensRouter.post("/", async (req: AuthedRequest, res, next) => {
 
 tokensRouter.delete("/:id", async (req: AuthedRequest, res, next) => {
   try {
-    if (req.authSource !== "jwt") throw httpError(403, "Interactive session required");
+    if (req.authSource !== "jwt") throw httpError(403, "INTERACTIVE_SESSION_REQUIRED");
     const row = await prisma.apiToken.findUnique({ where: { id: req.params.id } });
-    if (!row || row.userId !== req.user!.id) throw httpError(404, "Token not found");
+    if (!row || row.userId !== req.user!.id) throw httpError(404, "TOKEN_NOT_FOUND");
     await prisma.apiToken.delete({ where: { id: row.id } });
     logger.info({ tokenId: row.id, userId: req.user!.id }, "api token revoked");
     res.status(204).end();

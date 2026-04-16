@@ -5,6 +5,7 @@ import { AuthedRequest, requireManager } from "../middleware/auth";
 import { httpError } from "../middleware/error";
 import { caseWhere, suiteWhere } from "../middleware/scope";
 import { logActivity } from "../lib/activity";
+import { logger } from "../lib/logger";
 
 export const casesRouter = Router();
 
@@ -36,7 +37,7 @@ casesRouter.post("/", requireManager, async (req: AuthedRequest, res, next) => {
   try {
     const data = upsertSchema.parse(req.body);
     const suite = await prisma.testSuite.findFirst({ where: suiteWhere(req.user!, { id: data.suiteId }), select: { id: true } });
-    if (!suite) throw httpError(404, "Suite not found");
+    if (!suite) throw httpError(404, "SUITE_NOT_FOUND");
     const testCase = await prisma.testCase.create({
       data: {
         ...data,
@@ -47,6 +48,7 @@ casesRouter.post("/", requireManager, async (req: AuthedRequest, res, next) => {
       },
       include: { suite: true },
     });
+    req.log.info({ caseId: testCase.id, suiteId: data.suiteId, userId: req.user!.id }, "case created");
     await logActivity({
       projectId: testCase.suite.projectId,
       userId: req.user!.id,
@@ -72,7 +74,7 @@ casesRouter.get("/:id", async (req: AuthedRequest, res, next) => {
         requirementLinks: { select: { id: true, externalRef: true, title: true } },
       },
     });
-    if (!testCase) throw httpError(404, "Case not found");
+    if (!testCase) throw httpError(404, "CASE_NOT_FOUND");
     res.json(testCase);
   } catch (e) {
     next(e);
@@ -82,7 +84,7 @@ casesRouter.get("/:id", async (req: AuthedRequest, res, next) => {
 casesRouter.patch("/:id", requireManager, async (req: AuthedRequest, res, next) => {
   try {
     const current = await prisma.testCase.findFirst({ where: caseWhere(req.user!, { id: req.params.id }) });
-    if (!current) throw httpError(404, "Case not found");
+    if (!current) throw httpError(404, "CASE_NOT_FOUND");
     const data = upsertSchema.partial().omit({ suiteId: true }).parse(req.body);
 
     // Snapshot current state into history before overwriting.
@@ -116,6 +118,7 @@ casesRouter.patch("/:id", requireManager, async (req: AuthedRequest, res, next) 
       },
       include: { suite: true },
     });
+    req.log.info({ caseId: req.params.id, userId: req.user!.id }, "case updated");
     await logActivity({
       projectId: testCase.suite.projectId,
       userId: req.user!.id,
@@ -133,7 +136,7 @@ casesRouter.patch("/:id", requireManager, async (req: AuthedRequest, res, next) 
 casesRouter.get("/:id/revisions", async (req: AuthedRequest, res, next) => {
   try {
     const owned = await prisma.testCase.findFirst({ where: caseWhere(req.user!, { id: req.params.id }), select: { id: true } });
-    if (!owned) throw httpError(404, "Case not found");
+    if (!owned) throw httpError(404, "CASE_NOT_FOUND");
     const rows = await prisma.testCaseRevision.findMany({
       where: { caseId: owned.id },
       orderBy: { version: "desc" },
@@ -154,8 +157,9 @@ casesRouter.get("/:id/revisions", async (req: AuthedRequest, res, next) => {
 casesRouter.delete("/:id", requireManager, async (req: AuthedRequest, res, next) => {
   try {
     const owned = await prisma.testCase.findFirst({ where: caseWhere(req.user!, { id: req.params.id }), select: { id: true } });
-    if (!owned) throw httpError(404, "Case not found");
+    if (!owned) throw httpError(404, "CASE_NOT_FOUND");
     await prisma.testCase.delete({ where: { id: req.params.id } });
+    req.log.info({ caseId: req.params.id, userId: req.user!.id }, "case deleted");
     res.status(204).end();
   } catch (e) {
     next(e);
@@ -169,10 +173,10 @@ casesRouter.post("/:id/clone", requireManager, async (req: AuthedRequest, res, n
       where: caseWhere(req.user!, { id: req.params.id }),
       include: { suite: true },
     });
-    if (!source) throw httpError(404, "Case not found");
+    if (!source) throw httpError(404, "CASE_NOT_FOUND");
     if (target.suiteId) {
       const dest = await prisma.testSuite.findFirst({ where: suiteWhere(req.user!, { id: target.suiteId }), select: { id: true } });
-      if (!dest) throw httpError(404, "Destination suite not found");
+      if (!dest) throw httpError(404, "DESTINATION_SUITE_NOT_FOUND");
     }
     const cloned = await prisma.testCase.create({
       data: {
@@ -189,6 +193,7 @@ casesRouter.post("/:id/clone", requireManager, async (req: AuthedRequest, res, n
       },
       include: { suite: true },
     });
+    req.log.info({ originalId: req.params.id, cloneId: cloned.id, userId: req.user!.id }, "case cloned");
     await logActivity({
       projectId: cloned.suite.projectId,
       userId: req.user!.id,

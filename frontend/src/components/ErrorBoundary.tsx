@@ -1,4 +1,5 @@
 import { Component, ErrorInfo, ReactNode } from "react";
+import i18n from "../i18n";
 import { logger } from "../lib/logger";
 
 type Props = { children: ReactNode; fallback?: (reset: () => void, err: Error) => ReactNode };
@@ -32,17 +33,16 @@ export class ErrorBoundary extends Component<Props, State> {
       return (
         <div className="min-h-[60vh] flex items-center justify-center p-6">
           <div className="card p-8 max-w-lg text-center space-y-3">
-            <h1 className="text-2xl font-bold text-red-600">Something went wrong</h1>
+            <h1 className="text-2xl font-bold text-red-600">{i18n.t("errors.boundary_title")}</h1>
             <p className="text-sm text-slate-600">
-              The page hit an unexpected error. Reload to try again — if it keeps happening, report
-              it with a note about what you were doing.
+              {i18n.t("errors.boundary_body")}
             </p>
             <pre className="text-xs text-slate-500 dark:text-slate-400 text-left bg-slate-50 dark:bg-slate-800 p-3 rounded overflow-auto max-h-40">
               {this.state.error.message}
             </pre>
             <div className="flex gap-2 justify-center">
-              <button className="btn-secondary" onClick={() => window.location.reload()}>Reload page</button>
-              <button className="btn-primary" onClick={this.reset}>Try again</button>
+              <button className="btn-secondary" onClick={() => window.location.reload()}>{i18n.t("errors.reload")}</button>
+              <button className="btn-primary" onClick={this.reset}>{i18n.t("errors.try_again")}</button>
             </div>
           </div>
         </div>

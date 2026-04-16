@@ -70,7 +70,7 @@ projectsRouter.get("/:id", async (req: AuthedRequest, res, next) => {
         },
       },
     });
-    if (!project) throw httpError(404, "Project not found");
+    if (!project) throw httpError(404, "PROJECT_NOT_FOUND");
     res.json(project);
   } catch (e) {
     next(e);
@@ -80,7 +80,7 @@ projectsRouter.get("/:id", async (req: AuthedRequest, res, next) => {
 projectsRouter.patch("/:id", requireManager, async (req: AuthedRequest, res, next) => {
   try {
     const owned = await prisma.project.findFirst({ where: projectWhere(req.user!, { id: req.params.id }), select: { id: true } });
-    if (!owned) throw httpError(404, "Project not found");
+    if (!owned) throw httpError(404, "PROJECT_NOT_FOUND");
     const data = upsertSchema.partial().parse(req.body);
     const project = await prisma.project.update({ where: { id: req.params.id }, data });
     logger.info({ projectId: project.id, updatedBy: req.user!.id }, "project updated");
@@ -93,7 +93,7 @@ projectsRouter.patch("/:id", requireManager, async (req: AuthedRequest, res, nex
 projectsRouter.delete("/:id", requireManager, async (req: AuthedRequest, res, next) => {
   try {
     const owned = await prisma.project.findFirst({ where: projectWhere(req.user!, { id: req.params.id }), select: { id: true } });
-    if (!owned) throw httpError(404, "Project not found");
+    if (!owned) throw httpError(404, "PROJECT_NOT_FOUND");
     await prisma.project.delete({ where: { id: req.params.id } });
     logger.info({ projectId: req.params.id, deletedBy: req.user!.id }, "project deleted");
     res.status(204).end();
@@ -108,7 +108,7 @@ projectsRouter.get("/:id/custom-fields", async (req: AuthedRequest, res, next) =
       where: projectWhere(req.user!, { id: req.params.id }),
       select: { id: true, customFields: true },
     });
-    if (!project) throw httpError(404, "Project not found");
+    if (!project) throw httpError(404, "PROJECT_NOT_FOUND");
     res.json((project.customFields as unknown as CustomField[]) ?? []);
   } catch (e) {
     next(e);
@@ -121,11 +121,11 @@ projectsRouter.put("/:id/custom-fields", requireManager, async (req: AuthedReque
       where: projectWhere(req.user!, { id: req.params.id }),
       select: { id: true },
     });
-    if (!owned) throw httpError(404, "Project not found");
+    if (!owned) throw httpError(404, "PROJECT_NOT_FOUND");
     const input = z.array(customFieldSchema).max(40).parse(req.body);
     const normalised: CustomField[] = input.map((f) => {
       if (f.type === "select" && (!f.options || f.options.length === 0)) {
-        throw httpError(400, `Field "${f.label}" requires at least one option`);
+        throw httpError(400, "CUSTOM_FIELD_REQUIRES_OPTIONS");
       }
       return {
         id: f.id && /^[a-z0-9-]{8,}$/i.test(f.id) ? f.id : randomUUID(),

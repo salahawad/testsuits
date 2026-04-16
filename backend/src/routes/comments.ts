@@ -18,20 +18,20 @@ const create = z.object({
 async function accessibleCommentWhere(req: AuthedRequest, target: { caseId?: string; executionId?: string; runId?: string }) {
   if (target.caseId) {
     const c = await prisma.testCase.findFirst({ where: caseWhere(req.user!, { id: target.caseId }), select: { id: true } });
-    if (!c) throw httpError(404, "Case not found");
+    if (!c) throw httpError(404, "CASE_NOT_FOUND");
     return { caseId: target.caseId };
   }
   if (target.executionId) {
     const e = await prisma.testExecution.findFirst({ where: executionWhere(req.user!, { id: target.executionId }), select: { id: true } });
-    if (!e) throw httpError(404, "Execution not found");
+    if (!e) throw httpError(404, "EXECUTION_NOT_FOUND");
     return { executionId: target.executionId };
   }
   if (target.runId) {
     const r = await prisma.testRun.findFirst({ where: runWhere(req.user!, { id: target.runId }), select: { id: true } });
-    if (!r) throw httpError(404, "Run not found");
+    if (!r) throw httpError(404, "RUN_NOT_FOUND");
     return { runId: target.runId };
   }
-  throw httpError(400, "caseId, executionId, or runId required");
+  throw httpError(400, "COMMENT_TARGET_REQUIRED");
 }
 
 commentsRouter.get("/", async (req: AuthedRequest, res, next) => {
@@ -87,6 +87,7 @@ commentsRouter.post("/", requireWrite, async (req: AuthedRequest, res, next) => 
         payload: { body: data.body.slice(0, 200) },
       });
     }
+    req.log.info({ commentId: comment.id, entityType, entityId, userId: req.user!.id }, "comment created");
     res.status(201).json(comment);
   } catch (e) {
     next(e);
@@ -96,11 +97,12 @@ commentsRouter.post("/", requireWrite, async (req: AuthedRequest, res, next) => 
 commentsRouter.delete("/:id", requireWrite, async (req: AuthedRequest, res, next) => {
   try {
     const comment = await prisma.comment.findUnique({ where: { id: req.params.id } });
-    if (!comment) throw httpError(404, "Comment not found");
+    if (!comment) throw httpError(404, "COMMENT_NOT_FOUND");
     if (comment.userId !== req.user!.id && req.user!.role !== "MANAGER") {
-      throw httpError(403, "Cannot delete others' comments");
+      throw httpError(403, "CANNOT_DELETE_OTHERS_COMMENTS");
     }
     await prisma.comment.delete({ where: { id: req.params.id } });
+    req.log.info({ commentId: req.params.id, userId: req.user!.id }, "comment deleted");
     res.status(204).end();
   } catch (e) {
     next(e);

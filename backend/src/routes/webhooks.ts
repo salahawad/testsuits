@@ -26,12 +26,12 @@ webhooksRouter.get("/events", (_req, res) => {
 webhooksRouter.get("/", async (req: AuthedRequest, res, next) => {
   try {
     const { projectId } = req.query as Record<string, string | undefined>;
-    if (!projectId) throw httpError(400, "projectId is required");
+    if (!projectId) throw httpError(400, "PROJECT_ID_REQUIRED");
     const owned = await prisma.project.findFirst({
       where: projectWhere(req.user!, { id: projectId }),
       select: { id: true },
     });
-    if (!owned) throw httpError(404, "Project not found");
+    if (!owned) throw httpError(404, "PROJECT_NOT_FOUND");
     const hooks = await prisma.webhook.findMany({
       where: { projectId },
       orderBy: { createdAt: "desc" },
@@ -58,7 +58,7 @@ webhooksRouter.post("/", requireManager, async (req: AuthedRequest, res, next) =
       where: projectWhere(req.user!, { id: data.projectId }),
       select: { id: true },
     });
-    if (!owned) throw httpError(404, "Project not found");
+    if (!owned) throw httpError(404, "PROJECT_NOT_FOUND");
     const hook = await prisma.webhook.create({
       data: {
         projectId: data.projectId,
@@ -90,7 +90,7 @@ webhooksRouter.patch("/:id", requireManager, async (req: AuthedRequest, res, nex
       where: { id: req.params.id, project: { companyId: req.user!.companyId } },
       select: { id: true, projectId: true },
     });
-    if (!existing) throw httpError(404, "Webhook not found");
+    if (!existing) throw httpError(404, "WEBHOOK_NOT_FOUND");
     const data = upsertSchema.partial().omit({ projectId: true }).parse(req.body);
     const hook = await prisma.webhook.update({
       where: { id: req.params.id },
@@ -110,6 +110,7 @@ webhooksRouter.patch("/:id", requireManager, async (req: AuthedRequest, res, nex
       entityId: hook.id,
       payload: { url: hook.url, events: hook.events, active: hook.active },
     });
+    req.log.info({ webhookId: hook.id, projectId: existing.projectId, userId: req.user!.id }, "webhook updated");
     const { secret, ...rest } = hook;
     res.json({ ...rest, hasSecret: !!secret });
   } catch (e) {
@@ -123,8 +124,9 @@ webhooksRouter.delete("/:id", requireManager, async (req: AuthedRequest, res, ne
       where: { id: req.params.id, project: { companyId: req.user!.companyId } },
       select: { id: true },
     });
-    if (!existing) throw httpError(404, "Webhook not found");
+    if (!existing) throw httpError(404, "WEBHOOK_NOT_FOUND");
     await prisma.webhook.delete({ where: { id: req.params.id } });
+    req.log.info({ webhookId: req.params.id, userId: req.user!.id }, "webhook deleted");
     res.status(204).end();
   } catch (e) {
     next(e);
@@ -136,13 +138,14 @@ webhooksRouter.post("/:id/test", requireManager, async (req: AuthedRequest, res,
     const hook = await prisma.webhook.findFirst({
       where: { id: req.params.id, project: { companyId: req.user!.companyId } },
     });
-    if (!hook) throw httpError(404, "Webhook not found");
+    if (!hook) throw httpError(404, "WEBHOOK_NOT_FOUND");
     const event = hook.events[0] ?? "run.created";
     dispatchWebhook({
       projectId: hook.projectId,
       event: event as typeof WEBHOOK_EVENTS[number],
       payload: { test: true, triggeredBy: req.user!.id },
     });
+    req.log.info({ webhookId: hook.id, projectId: hook.projectId, event, userId: req.user!.id }, "webhook test dispatched");
     res.json({ ok: true, event });
   } catch (e) {
     next(e);

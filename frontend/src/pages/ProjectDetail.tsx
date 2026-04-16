@@ -3,8 +3,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { FolderTree, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { z } from "zod";
 import { api } from "../lib/api";
+import { logger } from "../lib/logger";
 import { PageLoader } from "../components/Spinner";
 import { Field } from "../components/Field";
 import { useZodForm } from "../lib/useZodForm";
@@ -43,13 +45,18 @@ export function ProjectDetail() {
         name: values.name,
         description: values.description || null,
       }, { silent: true })).data,
-    onSuccess: () => {
+    onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["project", id] });
       setOpen(false);
       form.reset({ name: "", description: "" });
       setSubmitError(null);
+      toast.success(t("common.saved"));
+      logger.info("suite created", { suiteId: data.id, projectId: id });
     },
-    onError: (e: unknown) => setSubmitError(apiErrorMessage(e, "Create failed")),
+    onError: (e: unknown) => {
+      logger.warn("suite creation failed", { err: e });
+      setSubmitError(apiErrorMessage(e, t("common.something_went_wrong")));
+    },
   });
 
   if (isLoading) return <PageLoader />;

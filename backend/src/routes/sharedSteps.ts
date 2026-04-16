@@ -18,12 +18,12 @@ const upsertSchema = z.object({
 sharedStepsRouter.get("/", async (req: AuthedRequest, res, next) => {
   try {
     const { projectId, q } = req.query as Record<string, string | undefined>;
-    if (!projectId) throw httpError(400, "projectId is required");
+    if (!projectId) throw httpError(400, "PROJECT_ID_REQUIRED");
     const owned = await prisma.project.findFirst({
       where: projectWhere(req.user!, { id: projectId }),
       select: { id: true },
     });
-    if (!owned) throw httpError(404, "Project not found");
+    if (!owned) throw httpError(404, "PROJECT_NOT_FOUND");
     const steps = await prisma.sharedStep.findMany({
       where: {
         projectId,
@@ -52,7 +52,7 @@ sharedStepsRouter.post("/", requireManager, async (req: AuthedRequest, res, next
       where: projectWhere(req.user!, { id: data.projectId }),
       select: { id: true },
     });
-    if (!owned) throw httpError(404, "Project not found");
+    if (!owned) throw httpError(404, "PROJECT_NOT_FOUND");
     const step = await prisma.sharedStep.create({
       data: { ...data, createdById: req.user!.id },
     });
@@ -77,7 +77,7 @@ sharedStepsRouter.patch("/:id", requireManager, async (req: AuthedRequest, res, 
       where: { id: req.params.id, project: { companyId: req.user!.companyId } },
       select: { id: true, projectId: true },
     });
-    if (!existing) throw httpError(404, "Shared step not found");
+    if (!existing) throw httpError(404, "SHARED_STEP_NOT_FOUND");
     const data = upsertSchema.partial().omit({ projectId: true }).parse(req.body);
     const step = await prisma.sharedStep.update({
       where: { id: req.params.id },
@@ -91,6 +91,7 @@ sharedStepsRouter.patch("/:id", requireManager, async (req: AuthedRequest, res, 
       entityId: step.id,
       payload: { name: step.name },
     });
+    req.log.info({ sharedStepId: step.id, projectId: existing.projectId, userId: req.user!.id }, "shared step updated");
     res.json(step);
   } catch (e) {
     next(e);
@@ -103,8 +104,9 @@ sharedStepsRouter.delete("/:id", requireManager, async (req: AuthedRequest, res,
       where: { id: req.params.id, project: { companyId: req.user!.companyId } },
       select: { id: true },
     });
-    if (!existing) throw httpError(404, "Shared step not found");
+    if (!existing) throw httpError(404, "SHARED_STEP_NOT_FOUND");
     await prisma.sharedStep.delete({ where: { id: req.params.id } });
+    req.log.info({ sharedStepId: req.params.id, userId: req.user!.id }, "shared step deleted");
     res.status(204).end();
   } catch (e) {
     next(e);

@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { logger } from "../lib/logger";
+import { PasswordInput } from "../components/PasswordInput";
 import { useConfirm } from "../components/ui/ConfirmDialog";
 import { Spinner } from "../components/Spinner";
 
@@ -77,6 +78,7 @@ export function CompanySettings() {
       logger.info("jira company config saved");
     },
     onError: (e: any) => {
+      logger.warn("jira config save failed", { err: e });
       const msg = e.response?.data?.error ?? t("common.something_went_wrong");
       setErr(msg);
       toast.error(msg);
@@ -85,7 +87,10 @@ export function CompanySettings() {
 
   const test = useMutation({
     mutationFn: async () => (await api.post(`/jira/test`)).data,
-    onSuccess: (data) => setTestResult(t("jira.connected_as", { name: data.connectedAs, email: data.email })),
+    onSuccess: (data) => {
+      setTestResult(t("jira.connected_as", { name: data.connectedAs, email: data.email }));
+      logger.info("jira test connection successful");
+    },
     onError: (e: any) => setTestResult(`${e.response?.data?.error ?? "failed"}`),
   });
 
@@ -94,6 +99,7 @@ export function CompanySettings() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["jira-config"] });
       toast.success(t("jira.config_removed"));
+      logger.info("jira config removed");
     },
   });
 
@@ -132,7 +138,7 @@ export function CompanySettings() {
           <h3 className="text-sm font-semibold text-slate-700">{t("jira.credentials")}</h3>
           <div>
             <label className="label">{t("jira.base_url")}</label>
-            <input className="input" placeholder="https://your-domain.atlassian.net" value={form.baseUrl} disabled={!isManager}
+            <input className="input" placeholder={t("jira.base_url_placeholder")} value={form.baseUrl} disabled={!isManager}
               onChange={(e) => setForm({ ...form, baseUrl: e.target.value })} required />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -145,8 +151,8 @@ export function CompanySettings() {
               <label className="label">
                 {t("jira.api_token")} {config?.hasToken && <span className="text-slate-400">{t("jira.api_token_stored")}</span>}
               </label>
-              <input type="password" className="input" value={form.apiToken} disabled={!isManager}
-                onChange={(e) => setForm({ ...form, apiToken: e.target.value })}
+              <PasswordInput className="input" value={form.apiToken} disabled={!isManager}
+                onChange={(e) => setForm({ ...form, apiToken: (e.target as HTMLInputElement).value })}
                 placeholder={config?.hasToken ? "••••••••" : ""}
                 required={!config?.hasToken} />
             </div>
@@ -155,7 +161,7 @@ export function CompanySettings() {
             <label className="label">{t("jira.default_issue_type")}</label>
             <input className="input" value={form.defaultIssueType} disabled={!isManager}
               onChange={(e) => setForm({ ...form, defaultIssueType: e.target.value })}
-              placeholder="Bug" />
+              placeholder={t("jira.default_issue_type_placeholder")} />
             <p className="text-xs text-slate-500 mt-1">{t("jira.default_issue_type_help")}</p>
           </div>
           <p className="text-xs text-slate-500">

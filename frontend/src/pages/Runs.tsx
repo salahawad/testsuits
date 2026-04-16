@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useSearchParams } from "react-router-dom";
-import { Plus, List, LayoutGrid } from "lucide-react";
+import { Plus, List, LayoutGrid, Archive, RotateCcw } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { z } from "zod";
 import { api } from "../lib/api";
 import { runStatusColors } from "../lib/status";
@@ -10,12 +11,13 @@ import { Badge } from "../components/ui/Badge";
 import { CONNECTIVITY, PLATFORMS, TEST_LEVELS } from "../lib/enums";
 import { logger } from "../lib/logger";
 import { useAuth } from "../lib/auth";
+import { useConfirm } from "../components/ui/ConfirmDialog";
 import { Field } from "../components/Field";
 import { useZodForm } from "../lib/useZodForm";
 import { nonEmpty } from "../lib/schemas";
 import { apiErrorMessage } from "../lib/apiError";
 
-const KANBAN_COLUMNS = ["DRAFT", "IN_PROGRESS", "COMPLETED", "ARCHIVED"] as const;
+const KANBAN_COLUMNS = ["DRAFT", "IN_PROGRESS", "COMPLETED"] as const;
 
 const schema = z.object({
   projectId: nonEmpty("Project"),
@@ -37,9 +39,11 @@ export function Runs() {
   const user = useAuth((s) => s.user);
   const isManager = user?.role === "MANAGER" || user?.role === "ADMIN";
   const view = params.get("view") === "kanban" ? "kanban" : "list";
+  const tab = params.get("tab") === "archived" ? "archived" : "active";
   const projectIdFilter = params.get("projectId") ?? "";
   const milestoneIdFilter = params.get("milestoneId") ?? "";
   const qc = useQueryClient();
+  const confirmDialog = useConfirm();
 
   const [open, setOpen] = useState(false);
   const [selectedSuiteIds, setSelectedSuiteIds] = useState<string[]>([]);
@@ -66,6 +70,7 @@ export function Runs() {
   const runsParams: Record<string, string> = {};
   if (projectIdFilter) runsParams.projectId = projectIdFilter;
   if (milestoneIdFilter) runsParams.milestoneId = milestoneIdFilter;
+  if (tab === "archived") runsParams.archived = "true";
 
   const { data: runs = [] } = useQuery({
     queryKey: ["runs", runsParams],
@@ -118,6 +123,7 @@ export function Runs() {
         locale: form.getValues("locale"),
         levels: testLevels,
       });
+      toast.success(t("common.saved"));
       qc.invalidateQueries({ queryKey: ["runs"] });
       setOpen(false);
       form.reset({
@@ -185,6 +191,38 @@ export function Runs() {
     setParams(p, { replace: true });
   };
 
+  const setTab = (next: "active" | "archived") => {
+    const p = new URLSearchParams(params);
+    if (next === "active") { p.delete("tab"); p.delete("view"); }
+    else { p.set("tab", next); p.delete("view"); }
+    setParams(p, { replace: true });
+  };
+
+  const archiveRun = useMutation({
+    mutationFn: async ({ runId, archive }: { runId: string; archive: boolean }) =>
+      (await api.patch(`/runs/${runId}`, { status: archive ? "ARCHIVED" : "COMPLETED" })).data,
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["runs"] });
+      const msg = vars.archive ? t("runs.archived_toast") : t("runs.unarchived_toast");
+      toast.success(msg);
+      logger.info(vars.archive ? "run archived" : "run unarchived", { runId: vars.runId });
+    },
+  });
+
+  async function onArchive(e: React.MouseEvent, runId: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (await confirmDialog({ title: t("runs.archive_confirm"), tone: "warning" })) {
+      archiveRun.mutate({ runId, archive: true });
+    }
+  }
+
+  function onUnarchive(e: React.MouseEvent, runId: string) {
+    e.preventDefault();
+    e.stopPropagation();
+    archiveRun.mutate({ runId, archive: false });
+  }
+
   const updateStatus = useMutation({
     mutationFn: async ({ runId, status }: { runId: string; status: string }) =>
       (await api.patch(`/runs/${runId}`, { status })).data,
@@ -214,29 +252,51 @@ export function Runs() {
           <p className="text-sm text-slate-500">{t("runs.subtitle")}</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="inline-flex rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900" role="tablist" aria-label={t("runs.view_toggle")}>
+          <div className="inline-flex rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900" role="tablist" aria-label={t("runs.tab_active")}>
             <button
               type="button"
-              className={`px-2.5 py-1.5 text-xs inline-flex items-center gap-1 ${view === "list" ? "bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-100" : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"}`}
-              onClick={() => setView("list")}
-              aria-pressed={view === "list"}
+              className={`px-2.5 py-1.5 text-xs inline-flex items-center gap-1 ${tab === "active" ? "bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-100" : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"}`}
+              onClick={() => setTab("active")}
+              aria-pressed={tab === "active"}
             >
-              <List size={14} /> {t("runs.view_list")}
+              {t("runs.tab_active")}
             </button>
             <button
               type="button"
-              className={`px-2.5 py-1.5 text-xs inline-flex items-center gap-1 ${view === "kanban" ? "bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-100" : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"}`}
-              onClick={() => setView("kanban")}
-              aria-pressed={view === "kanban"}
+              className={`px-2.5 py-1.5 text-xs inline-flex items-center gap-1 ${tab === "archived" ? "bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-100" : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"}`}
+              onClick={() => setTab("archived")}
+              aria-pressed={tab === "archived"}
             >
-              <LayoutGrid size={14} /> {t("runs.view_kanban")}
+              <Archive size={14} /> {t("runs.tab_archived")}
             </button>
           </div>
-          <button className="btn-primary" onClick={() => setOpen(true)}><Plus size={16} /> {t("runs.new_run")}</button>
+          {tab === "active" && (
+            <>
+              <div className="inline-flex rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900" role="tablist" aria-label={t("runs.view_toggle")}>
+                <button
+                  type="button"
+                  className={`px-2.5 py-1.5 text-xs inline-flex items-center gap-1 ${view === "list" ? "bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-100" : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"}`}
+                  onClick={() => setView("list")}
+                  aria-pressed={view === "list"}
+                >
+                  <List size={14} /> {t("runs.view_list")}
+                </button>
+                <button
+                  type="button"
+                  className={`px-2.5 py-1.5 text-xs inline-flex items-center gap-1 ${view === "kanban" ? "bg-slate-100 text-slate-800 dark:bg-slate-700 dark:text-slate-100" : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200"}`}
+                  onClick={() => setView("kanban")}
+                  aria-pressed={view === "kanban"}
+                >
+                  <LayoutGrid size={14} /> {t("runs.view_kanban")}
+                </button>
+              </div>
+              <button className="btn-primary" onClick={() => setOpen(true)}><Plus size={16} /> {t("runs.new_run")}</button>
+            </>
+          )}
         </div>
       </header>
 
-      {open && (
+      {open && tab === "active" && (
         <form noValidate onSubmit={form.handleSubmit(onValid)} className="card p-5 space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Field name="projectId" label={t("runs.project")} error={form.formState.errors.projectId?.message}>
@@ -269,7 +329,7 @@ export function Runs() {
               </select>
             </Field>
             <Field name="environment" label={t("runs.environment")} error={form.formState.errors.environment?.message}>
-              <input className="input" placeholder="Chrome 120 / Prod" {...form.register("environment")} />
+              <input className="input" placeholder={t("runs.environment_placeholder")} {...form.register("environment")} />
             </Field>
             <Field name="dueDate" label={t("runs.due_date")} error={form.formState.errors.dueDate?.message}>
               <input type="date" className="input" {...form.register("dueDate")} />
@@ -351,7 +411,37 @@ export function Runs() {
       )}
 
       {runs.length === 0 ? (
-        <div className="card p-10 text-center text-slate-500">{t("runs.empty")}</div>
+        <div className="card p-10 text-center text-slate-500">{tab === "archived" ? t("runs.empty_archived") : t("runs.empty")}</div>
+      ) : tab === "archived" ? (
+        <div className="card divide-y divide-slate-100 dark:divide-slate-800">
+          {runs.map((r: {
+            id: string; name: string; project: { name: string }; milestone?: { name: string };
+            platform?: string; connectivity?: string; locale?: string; environment?: string;
+            _count: { executions: number }; createdBy: { name: string }; dueDate?: string; status: string;
+          }) => (
+            <div key={r.id} className="flex items-center justify-between px-5 py-3">
+              <Link to={`/runs/${r.id}`} className="flex-1 min-w-0 hover:underline">
+                <div className="font-medium">{r.name}</div>
+                <div className="text-xs text-slate-500 flex items-center gap-2 flex-wrap">
+                  <span>{r.project.name}</span>
+                  {r.milestone && <Badge tone="violet">{r.milestone.name}</Badge>}
+                  {r.environment && <Badge tone="neutral">{r.environment}</Badge>}
+                  <span>{t("runs.cases_count", { count: r._count.executions })}</span>
+                  <span>{t("runs.by_user", { name: r.createdBy.name })}</span>
+                </div>
+              </Link>
+              {isManager && (
+                <button
+                  className="btn-secondary text-xs ml-3"
+                  onClick={(e) => onUnarchive(e, r.id)}
+                  disabled={archiveRun.isPending}
+                >
+                  <RotateCcw size={14} /> {t("runs.unarchive")}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
       ) : view === "list" ? (
         <div className="card divide-y divide-slate-100 dark:divide-slate-800">
           {runs.map((r: {
@@ -359,8 +449,8 @@ export function Runs() {
             platform?: string; connectivity?: string; locale?: string; environment?: string;
             _count: { executions: number }; createdBy: { name: string }; dueDate?: string; status: string;
           }) => (
-            <Link key={r.id} to={`/runs/${r.id}`} className="flex items-center justify-between px-5 py-3 hover:bg-slate-50 dark:hover:bg-slate-800">
-              <div>
+            <div key={r.id} className="flex items-center justify-between px-5 py-3 hover:bg-slate-50 dark:hover:bg-slate-800">
+              <Link to={`/runs/${r.id}`} className="flex-1 min-w-0">
                 <div className="font-medium">{r.name}</div>
                 <div className="text-xs text-slate-500 flex items-center gap-2 flex-wrap">
                   <span>{r.project.name}</span>
@@ -369,13 +459,25 @@ export function Runs() {
                   {r.connectivity && <Badge tone="success">{t(`connectivity.${r.connectivity}`)}</Badge>}
                   {r.locale && <Badge tone="rose">{r.locale}</Badge>}
                   {r.environment && <Badge tone="neutral">{r.environment}</Badge>}
-                  <span>{r._count.executions} cases</span>
-                  <span>by {r.createdBy.name}</span>
-                  {r.dueDate && <span>due {new Date(r.dueDate).toLocaleDateString()}</span>}
+                  <span>{t("runs.cases_count", { count: r._count.executions })}</span>
+                  <span>{t("runs.by_user", { name: r.createdBy.name })}</span>
+                  {r.dueDate && <span>{t("runs.due_on", { date: new Date(r.dueDate).toLocaleDateString() })}</span>}
                 </div>
+              </Link>
+              <div className="flex items-center gap-2 ml-3">
+                <span className={`badge ${runStatusColors[r.status]}`}>{r.status.replace("_", " ")}</span>
+                {isManager && (
+                  <button
+                    className="btn-secondary text-xs"
+                    title={t("runs.archive")}
+                    onClick={(e) => onArchive(e, r.id)}
+                    disabled={archiveRun.isPending}
+                  >
+                    <Archive size={14} />
+                  </button>
+                )}
               </div>
-              <span className={`badge ${runStatusColors[r.status]}`}>{r.status.replace("_", " ")}</span>
-            </Link>
+            </div>
           ))}
         </div>
       ) : (
@@ -383,7 +485,7 @@ export function Runs() {
           {isManager && (
             <p className="text-xs text-slate-500 mb-2">{t("runs.kanban_hint")}</p>
           )}
-          <div className="flex md:grid md:grid-cols-4 gap-3 overflow-x-auto md:overflow-visible -mx-4 sm:-mx-0 px-4 sm:px-0 snap-x snap-mandatory md:snap-none [&>*]:min-w-[85vw] sm:[&>*]:min-w-[300px] md:[&>*]:min-w-0 [&>*]:snap-center md:[&>*]:snap-align-none">
+          <div className="flex md:grid md:grid-cols-3 gap-3 overflow-x-auto md:overflow-visible -mx-4 sm:-mx-0 px-4 sm:px-0 snap-x snap-mandatory md:snap-none [&>*]:min-w-[85vw] sm:[&>*]:min-w-[300px] md:[&>*]:min-w-0 [&>*]:snap-center md:[&>*]:snap-align-none">
             {KANBAN_COLUMNS.map((status) => {
               const items = runs.filter((r: { status: string }) => r.status === status);
               return (
@@ -413,7 +515,7 @@ export function Runs() {
                         <div className="text-xs text-slate-500 mt-1 flex items-center gap-1 flex-wrap">
                           <span>{r.project.name}</span>
                           {r.milestone && <Badge tone="violet" size="xs">{r.milestone.name}</Badge>}
-                          <span>· {r._count.executions} cases</span>
+                          <span>· {t("runs.cases_count", { count: r._count.executions })}</span>
                         </div>
                       </Link>
                     ))}

@@ -23,7 +23,7 @@ const patchSchema = z.object({
 
 async function assertProjectInScope(req: AuthedRequest, projectId: string) {
   const p = await prisma.project.findFirst({ where: projectWhere(req.user!, { id: projectId }), select: { id: true } });
-  if (!p) throw httpError(404, "Project not found");
+  if (!p) throw httpError(404, "PROJECT_NOT_FOUND");
 }
 
 async function loadRequirementInScope(req: AuthedRequest, id: string) {
@@ -36,14 +36,14 @@ async function loadRequirementInScope(req: AuthedRequest, id: string) {
       },
     },
   });
-  if (!row) throw httpError(404, "Requirement not found");
+  if (!row) throw httpError(404, "REQUIREMENT_NOT_FOUND");
   return row;
 }
 
 requirementsRouter.get("/", async (req: AuthedRequest, res, next) => {
   try {
     const projectId = typeof req.query.projectId === "string" ? req.query.projectId : undefined;
-    if (!projectId) throw httpError(400, "projectId is required");
+    if (!projectId) throw httpError(400, "PROJECT_ID_REQUIRED");
     await assertProjectInScope(req, projectId);
     const rows = await prisma.requirement.findMany({
       where: { projectId },
@@ -80,7 +80,7 @@ requirementsRouter.post("/", requireManager, async (req: AuthedRequest, res, nex
     logger.info({ requirementId: row.id, projectId: row.projectId, externalRef: row.externalRef }, "requirement created");
     res.status(201).json(row);
   } catch (e: any) {
-    if (e?.code === "P2002") return next(httpError(409, "externalRef already exists in this project"));
+    if (e?.code === "P2002") return next(httpError(409, "EXTERNAL_REF_DUPLICATE"));
     next(e);
   }
 });
@@ -93,9 +93,10 @@ requirementsRouter.patch("/:id", requireManager, async (req: AuthedRequest, res,
       where: { id: existing.id },
       data: { ...data, description: data.description === undefined ? undefined : data.description },
     });
+    req.log.info({ requirementId: row.id, projectId: existing.projectId, userId: req.user!.id }, "requirement updated");
     res.json(row);
   } catch (e: any) {
-    if (e?.code === "P2002") return next(httpError(409, "externalRef already exists in this project"));
+    if (e?.code === "P2002") return next(httpError(409, "EXTERNAL_REF_DUPLICATE"));
     next(e);
   }
 });
@@ -120,7 +121,7 @@ async function assertCaseInScope(req: AuthedRequest, caseId: string, projectId: 
     where: caseWhere(req.user!, { id: caseId, suite: { projectId } }),
     select: { id: true },
   });
-  if (!c) throw httpError(404, "Case not found in this project");
+  if (!c) throw httpError(404, "CASE_NOT_FOUND_IN_PROJECT");
 }
 
 requirementsRouter.post("/:id/cases", requireManager, async (req: AuthedRequest, res, next) => {
@@ -132,6 +133,7 @@ requirementsRouter.post("/:id/cases", requireManager, async (req: AuthedRequest,
       where: { id: req_.id },
       data: { cases: { connect: { id: caseId } } },
     });
+    req.log.info({ requirementId: req_.id, caseId, userId: req.user!.id }, "case linked to requirement");
     res.status(204).end();
   } catch (e) {
     next(e);
@@ -146,6 +148,7 @@ requirementsRouter.delete("/:id/cases/:caseId", requireManager, async (req: Auth
       where: { id: req_.id },
       data: { cases: { disconnect: { id: req.params.caseId } } },
     });
+    req.log.info({ requirementId: req_.id, caseId: req.params.caseId, userId: req.user!.id }, "case unlinked from requirement");
     res.status(204).end();
   } catch (e) {
     next(e);

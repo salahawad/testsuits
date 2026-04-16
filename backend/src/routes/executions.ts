@@ -28,7 +28,7 @@ executionsRouter.patch("/:id", requireWrite, async (req: AuthedRequest, res, nex
       where: executionWhere(req.user!, { id: req.params.id }),
       include: { run: true },
     });
-    if (!before) throw httpError(404, "Execution not found");
+    if (!before) throw httpError(404, "EXECUTION_NOT_FOUND");
 
     // Managers and testers can both (re)assign executions — the assignee must
     // be a member of the caller's company, and scope middleware already
@@ -38,7 +38,7 @@ executionsRouter.patch("/:id", requireWrite, async (req: AuthedRequest, res, nex
         where: { id: data.assigneeId, companyId: req.user!.companyId },
         select: { id: true },
       });
-      if (!assignee) throw httpError(400, "Assignee must be in your company");
+      if (!assignee) throw httpError(400, "ASSIGNEE_NOT_IN_COMPANY");
     }
 
     const execution = await prisma.testExecution.update({
@@ -54,6 +54,11 @@ executionsRouter.patch("/:id", requireWrite, async (req: AuthedRequest, res, nex
         assignee: { select: { id: true, name: true } },
       },
     });
+
+    req.log.info(
+      { executionId: execution.id, status: data.status, previousStatus: before.status, userId: req.user!.id, runId: before.runId },
+      "execution updated",
+    );
 
     if (data.status && data.status !== before.status) {
       await logActivity({
@@ -109,7 +114,7 @@ executionsRouter.get("/:id", async (req: AuthedRequest, res, next) => {
         run: true,
       },
     });
-    if (!execution) return res.status(404).json({ error: "Execution not found" });
+    if (!execution) return res.status(404).json({ error: "EXECUTION_NOT_FOUND" });
     res.json(execution);
   } catch (e) {
     next(e);
@@ -128,7 +133,7 @@ executionsRouter.post("/bulk-assign", requireWrite, async (req: AuthedRequest, r
         where: { id: assigneeId, companyId: req.user!.companyId },
         select: { id: true },
       });
-      if (!assignee) throw httpError(400, "Assignee must be in your company");
+      if (!assignee) throw httpError(400, "ASSIGNEE_NOT_IN_COMPANY");
     }
 
     // Only update executions the caller can see — scope middleware handles

@@ -139,12 +139,18 @@ export function CaseDetail() {
 
   const clone = useMutation({
     mutationFn: async () => (await api.post(`/cases/${id}/clone`, {})).data,
-    onSuccess: (cloned) => navigate(`/cases/${cloned.id}`),
+    onSuccess: (cloned) => {
+      logger.info("case cloned", { originalId: id, cloneId: cloned.id });
+      toast.success(t("cases.saved"));
+      navigate(`/cases/${cloned.id}`);
+    },
   });
 
   const remove = useMutation({
     mutationFn: async () => api.delete(`/cases/${id}`),
     onSuccess: () => {
+      logger.info("case deleted", { caseId: id });
+      toast.success(t("common.deleted"));
       if (testCase?.suite?.id) navigate(`/suites/${testCase.suite.id}`);
     },
   });
@@ -157,6 +163,7 @@ export function CaseDetail() {
       return (await api.post("/attachments", form)).data;
     },
     onSuccess: () => {
+      logger.info("case attachment uploaded", { caseId: id });
       qc.invalidateQueries({ queryKey: ["case", id] });
       toast.success(t("cases.upload_done"));
     },
@@ -164,15 +171,20 @@ export function CaseDetail() {
 
   const deleteAttachment = useMutation({
     mutationFn: async (attId: string) => api.delete(`/attachments/${attId}`),
-    onSuccess: () => {
+    onSuccess: (_data, attachmentId) => {
+      logger.info("case attachment deleted", { attachmentId });
       qc.invalidateQueries({ queryKey: ["case", id] });
       toast.success(t("common.deleted"));
     },
   });
 
   async function onDownload(attId: string) {
-    const { data } = await api.get(`/attachments/${attId}/download`);
-    window.open(data.url, "_blank");
+    try {
+      const { data } = await api.get(`/attachments/${attId}/download`);
+      window.open(data.url, "_blank");
+    } catch (err) {
+      logger.error("attachment download failed", { attachmentId: attId, err });
+    }
   }
 
   function onFile(e: ChangeEvent<HTMLInputElement>) {
@@ -234,13 +246,13 @@ export function CaseDetail() {
               {testCase.estimatedMinutes && <Badge tone="neutral">{testCase.estimatedMinutes} min</Badge>}
               {testCase.cloneOf && (
                 <Badge tone="violet">
-                  <Link to={`/cases/${testCase.cloneOf.id}`} className="hover:underline">cloned from: {testCase.cloneOf.title}</Link>
+                  <Link to={`/cases/${testCase.cloneOf.id}`} className="hover:underline">{t("cases.cloned_from", { title: testCase.cloneOf.title })}</Link>
                 </Badge>
               )}
             </div>
           </div>
           <div className="flex gap-2">
-            <button className="btn-secondary" onClick={() => setHistoryOpen((v) => !v)}><Clock size={14} /> History</button>
+            <button className="btn-secondary" onClick={() => setHistoryOpen((v) => !v)}><Clock size={14} /> {t("cases.history")}</button>
             <button className="btn-secondary" onClick={() => clone.mutate()} disabled={clone.isPending}>
               {clone.isPending ? <Spinner size={14} className="text-slate-600" /> : <Copy size={14} />} {t("cases.clone")}
             </button>
@@ -257,32 +269,32 @@ export function CaseDetail() {
       ) : (
         <div className="space-y-3">
           <div>
-            <label className="label">Title</label>
+            <label className="label">{t("cases.title")}</label>
             <input className="input" value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             <div>
-              <label className="label">Priority</label>
+              <label className="label">{t("suites.priority")}</label>
               <select className="input" value={draft.priority} onChange={(e) => setDraft({ ...draft, priority: e.target.value })}>
-                <option value="LOW">Low</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HIGH">High</option>
-                <option value="CRITICAL">Critical</option>
+                <option value="LOW">{t("priority.LOW")}</option>
+                <option value="MEDIUM">{t("priority.MEDIUM")}</option>
+                <option value="HIGH">{t("priority.HIGH")}</option>
+                <option value="CRITICAL">{t("priority.CRITICAL")}</option>
               </select>
             </div>
             <div>
-              <label className="label">Estimated minutes</label>
+              <label className="label">{t("cases.estimated_minutes")}</label>
               <input type="number" min={1} className="input" value={draft.estimatedMinutes}
                 onChange={(e) => setDraft({ ...draft, estimatedMinutes: e.target.value ? parseInt(e.target.value, 10) : null })} />
             </div>
             <div>
-              <label className="label">Tags (comma-separated)</label>
+              <label className="label">{t("cases.tags")}</label>
               <input className="input" value={draft.tags.join(", ")}
                 onChange={(e) => setDraft({ ...draft, tags: e.target.value.split(",").map((s: string) => s.trim()).filter(Boolean) })} />
             </div>
           </div>
           <div>
-            <label className="label">Requirements (one per line — URL or ID)</label>
+            <label className="label">{t("cases.requirements")}</label>
             <textarea className="input" rows={2} value={draft.requirements.join("\n")}
               onChange={(e) => setDraft({ ...draft, requirements: e.target.value.split("\n").map((s: string) => s.trim()).filter(Boolean) })} />
           </div>
@@ -291,7 +303,7 @@ export function CaseDetail() {
 
       {reqs.length > 0 && !editing && (
         <section className="card p-5">
-          <h2 className="font-semibold mb-2">Requirements</h2>
+          <h2 className="font-semibold mb-2">{t("requirements.title")}</h2>
           <ul className="space-y-1 text-sm">
             {reqs.map((r, i) => (
               <li key={i}>
@@ -355,7 +367,7 @@ export function CaseDetail() {
           <p className="text-xs text-slate-500 mb-2">{t("cases.markdown_hint")}</p>
         )}
         {steps.length === 0 ? (
-          <div className="text-sm text-slate-500">No steps defined.</div>
+          <div className="text-sm text-slate-500">{t("cases.no_steps")}</div>
         ) : editing ? (
           <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onStepDragEnd}>
             <SortableContext items={stepIds} strategy={verticalListSortingStrategy}>
@@ -495,7 +507,7 @@ export function CaseDetail() {
 
       {editing && (
         <div className="flex gap-2 justify-end">
-          <button className="btn-secondary" onClick={() => setEditing(false)}>Cancel</button>
+          <button className="btn-secondary" onClick={() => setEditing(false)}>{t("common.cancel")}</button>
           <button className="btn-primary" onClick={onSaveClick} disabled={save.isPending}>
             {save.isPending && <Spinner size={14} className="text-white" />}
             {t("common.save")}
@@ -505,21 +517,21 @@ export function CaseDetail() {
 
       <section className="card p-5">
         <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold">Attachments</h2>
+          <h2 className="font-semibold">{t("cases.attachments")}</h2>
           <label className="btn-secondary cursor-pointer">
-            <Upload size={14} /> Upload
+            <Upload size={14} /> {t("cases.upload")}
             <input type="file" className="hidden" onChange={onFile} />
           </label>
         </div>
         {testCase.attachments.length === 0 ? (
-          <div className="text-sm text-slate-500">No attachments yet.</div>
+          <div className="text-sm text-slate-500">{t("cases.no_attachments")}</div>
         ) : (
           <ul className="divide-y divide-slate-100 dark:divide-slate-800">
             {testCase.attachments.map((a: any) => (
               <li key={a.id} className="flex items-center justify-between py-2">
                 <div>
                   <div className="text-sm font-medium">{a.filename}</div>
-                  <div className="text-xs text-slate-500">{(a.size / 1024).toFixed(1)} KB · by {a.uploadedBy.name}</div>
+                  <div className="text-xs text-slate-500">{t("runs.file_info", { size: (a.size / 1024).toFixed(1), name: a.uploadedBy.name })}</div>
                 </div>
                 <div className="flex gap-2">
                   <button className="btn-secondary" onClick={() => onDownload(a.id)}><Download size={14} /></button>
@@ -542,24 +554,24 @@ export function CaseDetail() {
       {historyOpen && (
         <section className="card p-5">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="font-semibold">History</h2>
+            <h2 className="font-semibold">{t("cases.history")}</h2>
             <button className="text-slate-400 hover:text-slate-700" onClick={() => setHistoryOpen(false)}><X size={16} /></button>
           </div>
           {(revisions as any[]).length === 0 ? (
-            <div className="text-sm text-slate-500">No prior revisions.</div>
+            <div className="text-sm text-slate-500">{t("cases.no_revisions")}</div>
           ) : (
             <ul className="divide-y divide-slate-100 dark:divide-slate-800">
               {(revisions as any[]).map((r) => (
                 <li key={r.id} className="py-2 text-sm">
                   <div className="flex items-center justify-between">
-                    <span className="font-medium">v{r.version} — {r.title}</span>
+                    <span className="font-medium">{t("cases.version", { version: r.version })} — {r.title}</span>
                     <span className="text-xs text-slate-500">
                       {new Date(r.createdAt).toLocaleString()}
                       {r.author && <> · {r.author.name}</>}
                     </span>
                   </div>
                   <div className="text-xs text-slate-500 mt-0.5">
-                    priority: {r.priority} · {Array.isArray(r.steps) ? r.steps.length : 0} step(s) · tags: {(r.tags ?? []).join(", ") || "—"}
+                    {t("cases.revision_summary", { priority: r.priority, stepsCount: Array.isArray(r.steps) ? r.steps.length : 0, tags: (r.tags ?? []).join(", ") || "—" })}
                   </div>
                 </li>
               ))}
@@ -569,7 +581,7 @@ export function CaseDetail() {
       )}
 
       <section className="card p-5">
-        <h2 className="font-semibold mb-3">Discussion</h2>
+        <h2 className="font-semibold mb-3">{t("cases.discussion")}</h2>
         <Comments target={{ caseId: testCase.id }} />
       </section>
     </div>
@@ -591,6 +603,7 @@ function SortableStepRow({
   onChangeExpected: (v: string) => void;
   onDelete: () => void;
 }) {
+  const { t } = useTranslation();
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -605,7 +618,7 @@ function SortableStepRow({
     >
       <button
         type="button"
-        aria-label={`Reorder step ${index + 1}`}
+        aria-label={t("cases.reorder_step", { step: index + 1 })}
         className="mt-1 text-slate-400 hover:text-slate-600 cursor-grab active:cursor-grabbing touch-none"
         {...attributes}
         {...listeners}
@@ -616,8 +629,8 @@ function SortableStepRow({
         {index + 1}
       </div>
       <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <RichEditor value={step.action} onChange={onChangeAction} placeholder="Action" minHeight={64} />
-        <RichEditor value={step.expected} onChange={onChangeExpected} placeholder="Expected result" minHeight={64} />
+        <RichEditor value={step.action} onChange={onChangeAction} placeholder={t("cases.action")} minHeight={64} />
+        <RichEditor value={step.expected} onChange={onChangeExpected} placeholder={t("cases.expected_result")} minHeight={64} />
       </div>
       <button className="text-slate-400 hover:text-red-600 mt-1" onClick={onDelete}>
         <Trash2 size={16} />
@@ -651,7 +664,8 @@ function LinkedRequirements({
 
   const link = useMutation({
     mutationFn: async (reqId: string) => api.post(`/requirements/${reqId}/cases`, { caseId }),
-    onSuccess: () => {
+    onSuccess: (_data, requirementId) => {
+      logger.info("requirement linked to case", { caseId, requirementId });
       qc.invalidateQueries({ queryKey: ["case", caseId] });
       qc.invalidateQueries({ queryKey: ["requirements", projectId] });
       setPickId("");
@@ -661,7 +675,8 @@ function LinkedRequirements({
 
   const unlink = useMutation({
     mutationFn: async (reqId: string) => api.delete(`/requirements/${reqId}/cases/${caseId}`),
-    onSuccess: () => {
+    onSuccess: (_data, requirementId) => {
+      logger.info("requirement unlinked from case", { caseId, requirementId });
       qc.invalidateQueries({ queryKey: ["case", caseId] });
       qc.invalidateQueries({ queryKey: ["requirements", projectId] });
       toast.success(t("requirement.unlinked"));
@@ -677,7 +692,7 @@ function LinkedRequirements({
     <section className="card p-5 space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold flex items-center gap-2">
-          <Link2 size={16} /> {t("requirements.linked_cases") /* reuse label */ ?? "Linked requirements"}
+          <Link2 size={16} /> {t("requirements.linked_cases")}
         </h2>
         <Link to={`/projects/${projectId}/requirements`} className="text-xs text-brand-600 hover:underline">
           {t("requirements.title")}
@@ -701,7 +716,7 @@ function LinkedRequirements({
                 <button
                   className="text-slate-400 hover:text-red-600"
                   onClick={() => unlink.mutate(r.id)}
-                  aria-label="Unlink"
+                  aria-label={t("common.unlink")}
                 >
                   <X size={12} />
                 </button>

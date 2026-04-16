@@ -1,24 +1,16 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
 import { api } from "../lib/api";
+import { logger } from "../lib/logger";
 import { Field } from "../components/Field";
 import { PasswordInput } from "../components/PasswordInput";
 import { useZodForm } from "../lib/useZodForm";
-import { passwordPolicy } from "../lib/schemas";
+import { passwordPolicyWithMessages } from "../lib/schemas";
 import { apiErrorMessage } from "../lib/apiError";
 
-const schema = z
-  .object({
-    password: passwordPolicy,
-    confirm: z.string().min(1, "Please confirm your password"),
-  })
-  .refine((v) => v.password === v.confirm, {
-    path: ["confirm"],
-    message: "Passwords don't match",
-  });
-type Values = z.infer<typeof schema>;
+type Values = { password: string; confirm: string };
 
 export function ResetPassword() {
   const { t } = useTranslation();
@@ -27,6 +19,16 @@ export function ResetPassword() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
+  const schema = useMemo(() => z
+    .object({
+      password: passwordPolicyWithMessages(t),
+      confirm: z.string().min(1, t("validation.confirm_password_required")),
+    })
+    .refine((v) => v.password === v.confirm, {
+      path: ["confirm"],
+      message: t("validation.passwords_no_match"),
+    }), [t]);
+
   const form = useZodForm<Values>(schema, { defaultValues: { password: "", confirm: "" } });
 
   async function onSubmit(values: Values) {
@@ -34,8 +36,10 @@ export function ResetPassword() {
     try {
       await api.post("/auth/reset", { token, password: values.password }, { silent: true });
       setDone(true);
+      logger.info("password reset");
       setTimeout(() => navigate("/login"), 1500);
     } catch (e: unknown) {
+      logger.warn("password reset failed", { err: e });
       setSubmitError(apiErrorMessage(e, t("auth_reset.reset_invalid")));
     }
   }

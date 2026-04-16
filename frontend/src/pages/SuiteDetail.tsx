@@ -3,8 +3,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
 import { ArrowLeft, FolderTree, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { toast } from "sonner";
 import { z } from "zod";
 import { api } from "../lib/api";
+import { logger } from "../lib/logger";
 import { priorityTone } from "../lib/status";
 import { PageLoader, Spinner } from "../components/Spinner";
 import { Badge } from "../components/ui/Badge";
@@ -49,13 +51,18 @@ export function SuiteDetail() {
         { projectId: suite.projectId, parentId: id, name: values.name },
         { silent: true },
       )).data,
-    onSuccess: () => {
+    onSuccess: (_data, values) => {
       qc.invalidateQueries({ queryKey: ["suite", id] });
       setOpenSuite(false);
       suiteForm.reset({ name: "" });
       setSuiteError(null);
+      toast.success(t("common.saved"));
+      logger.info("sub-suite created", { parentSuiteId: id, name: values.name });
     },
-    onError: (e: unknown) => setSuiteError(apiErrorMessage(e, "Create failed")),
+    onError: (e: unknown) => {
+      setSuiteError(apiErrorMessage(e, t("common.something_went_wrong")));
+      logger.warn("sub-suite creation failed", { parentSuiteId: id, error: String(e) });
+    },
   });
 
   const createCase = useMutation({
@@ -65,13 +72,18 @@ export function SuiteDetail() {
         { suiteId: id, title: values.title, priority: values.priority },
         { silent: true },
       )).data,
-    onSuccess: () => {
+    onSuccess: (_data, values) => {
       qc.invalidateQueries({ queryKey: ["suite", id] });
       setOpenCase(false);
       caseForm.reset({ title: "", priority: "MEDIUM" });
       setCaseError(null);
+      toast.success(t("common.saved"));
+      logger.info("case created", { suiteId: id, title: values.title, priority: values.priority });
     },
-    onError: (e: unknown) => setCaseError(apiErrorMessage(e, "Create failed")),
+    onError: (e: unknown) => {
+      setCaseError(apiErrorMessage(e, t("common.something_went_wrong")));
+      logger.warn("case creation failed", { suiteId: id, error: String(e) });
+    },
   });
 
   function closeSuiteForm() {
@@ -147,10 +159,10 @@ export function SuiteDetail() {
             error={caseForm.formState.errors.priority?.message}
           >
             <select className="input" {...caseForm.register("priority")}>
-              <option value="LOW">LOW</option>
-              <option value="MEDIUM">MEDIUM</option>
-              <option value="HIGH">HIGH</option>
-              <option value="CRITICAL">CRITICAL</option>
+              <option value="LOW">{t("priority.LOW")}</option>
+              <option value="MEDIUM">{t("priority.MEDIUM")}</option>
+              <option value="HIGH">{t("priority.HIGH")}</option>
+              <option value="CRITICAL">{t("priority.CRITICAL")}</option>
             </select>
           </Field>
           {caseError && <div role="alert" className="text-sm text-red-600">{caseError}</div>}

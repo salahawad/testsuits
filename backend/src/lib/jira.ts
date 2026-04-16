@@ -184,8 +184,8 @@ export async function jiraFetch<T>(
   });
   if (!resp.ok) {
     const text = await resp.text();
-    logger.error({ jiraPath: path, status: resp.status }, "jira request failed");
-    throw httpError(resp.status, `Jira error (${resp.status}): ${text.slice(0, 500)}`);
+    logger.error({ jiraPath: path, status: resp.status, body: text.slice(0, 500) }, "jira request failed");
+    throw httpError(resp.status, "JIRA_REQUEST_FAILED");
   }
   return resp.json() as Promise<T>;
 }
@@ -199,14 +199,14 @@ export async function createJiraBugForExecution(executionId: string) {
       executedBy: { select: { name: true, email: true } },
     },
   });
-  if (!execution) throw httpError(404, "Execution not found");
-  if (execution.jiraIssueKey) throw httpError(409, `Jira issue already linked: ${execution.jiraIssueKey}`);
-  if (execution.status !== "FAILED") throw httpError(400, "Execution must be FAILED to create a Jira bug");
+  if (!execution) throw httpError(404, "EXECUTION_NOT_FOUND");
+  if (execution.jiraIssueKey) throw httpError(409, "JIRA_ISSUE_ALREADY_LINKED");
+  if (execution.status !== "FAILED") throw httpError(400, "EXECUTION_NOT_FAILED");
 
   const project = execution.case.suite.project;
   const config = project.company.jiraConfig;
-  if (!config || !config.enabled) throw httpError(400, "Jira integration is not configured for this company");
-  if (!project.jiraProjectKey) throw httpError(400, "This project has no Jira target set — configure it in Project settings");
+  if (!config || !config.enabled) throw httpError(400, "JIRA_NOT_CONFIGURED");
+  if (!project.jiraProjectKey) throw httpError(400, "JIRA_PROJECT_NOT_SET");
 
   const stepsText = (execution.case.steps as Array<{ action: string; expected: string }>)
     .map((s, i) => `${i + 1}. ${s.action}\n   *Expected:* ${s.expected}`)
@@ -294,7 +294,9 @@ export async function createJiraBugForExecution(executionId: string) {
       entityId: executionId,
       payload: { issueKey: data.key, auto: true, parentEpic: project.jiraParentEpicKey ?? null },
     });
-  } catch {}
+  } catch (err) {
+    logger.warn({ err, executionId }, "failed to log activity for Jira bug creation");
+  }
 
   return updated;
 }

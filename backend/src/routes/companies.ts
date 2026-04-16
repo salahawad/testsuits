@@ -13,7 +13,7 @@ companiesRouter.get("/current", async (req: AuthedRequest, res, next) => {
       where: { id: req.user!.companyId },
       include: { _count: { select: { users: true, projects: true } } },
     });
-    if (!company) throw httpError(404, "Company not found");
+    if (!company) throw httpError(404, "COMPANY_NOT_FOUND");
     res.json(company);
   } catch (e) {
     next(e);

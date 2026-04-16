@@ -132,6 +132,8 @@ model User {
   avatarKey       String?
   failedAttempts  Int                  @default(0)
   lockedUntil     DateTime?
+  // Manager-imposed lock — prevents login and API access entirely.
+  isLocked        Boolean              @default(false)
   // TOTP two-factor authentication (opt-in per user).
   totpSecret      String?
   totpEnabledAt   DateTime?

@@ -16,11 +16,11 @@ matrixRouter.get("/projects/:projectId", async (req: AuthedRequest, res, next) =
     const { projectId } = req.params;
     const dimension = ((req.query.dimension as Dimension) ?? "platform") as Dimension;
     if (!VALID_DIMENSIONS.includes(dimension)) {
-      throw httpError(400, `dimension must be one of ${VALID_DIMENSIONS.join(", ")}`);
+      throw httpError(400, "INVALID_DIMENSION");
     }
 
     const project = await prisma.project.findFirst({ where: projectWhere(req.user!, { id: projectId }) });
-    if (!project) throw httpError(404, "Project not found");
+    if (!project) throw httpError(404, "PROJECT_NOT_FOUND");
 
     // --- Requirement pivot: columns are requirements, rows still cases.
     // A cell is populated only when the case is linked to that requirement.

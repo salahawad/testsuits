@@ -19,10 +19,10 @@ const rawJsonBody: RequestHandler = (req, res, next) => {
       req.body = raw ? JSON.parse(raw) : {};
       next();
     } catch {
-      res.status(400).json({ error: "Invalid JSON" });
+      res.status(400).json({ error: "INVALID_JSON" });
     }
   });
-  req.on("error", () => res.status(400).json({ error: "Read failed" }));
+  req.on("error", () => res.status(400).json({ error: "READ_FAILED" }));
 };
 
 // Per-IP sliding-window limiter. Unauthenticated traffic — a crash loop in a
@@ -36,7 +36,7 @@ const rateLimit: RequestHandler = (req, res, next) => {
   const now = Date.now();
   const hits = (buckets.get(ip) ?? []).filter((t) => now - t < WINDOW_MS);
   if (hits.length >= MAX_PER_WINDOW) {
-    return res.status(429).json({ error: "Too many client logs" });
+    return res.status(429).json({ error: "RATE_LIMIT_EXCEEDED" });
   }
   hits.push(now);
   buckets.set(ip, hits);
@@ -75,7 +75,7 @@ clientLogRouter.post("/", rateLimit, rawJsonBody, (req, res) => {
   const parsed = payloadSchema.safeParse(req.body);
   if (!parsed.success) {
     logger.warn({ issues: parsed.error.issues.slice(0, 3) }, "client log rejected");
-    return res.status(400).json({ error: "Invalid payload" });
+    return res.status(400).json({ error: "INVALID_PAYLOAD" });
   }
   const { level, message, ...rest } = parsed.data;
   const ip = (req.headers["x-forwarded-for"] as string | undefined)?.split(",")[0].trim() || req.ip;

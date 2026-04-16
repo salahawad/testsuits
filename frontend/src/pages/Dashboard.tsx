@@ -52,12 +52,12 @@ function TrendChart({ trend }: { trend: TrendPoint[] }) {
 
 type StatusKey = "PENDING" | "PASSED" | "FAILED" | "BLOCKED" | "SKIPPED";
 
-const statusMeta: Record<StatusKey, { label: string; bar: string; dot: string; text: string }> = {
-  PASSED:  { label: "Passed",  bar: "bg-emerald-500", dot: "bg-emerald-500", text: "text-emerald-700" },
-  FAILED:  { label: "Failed",  bar: "bg-red-500",     dot: "bg-red-500",     text: "text-red-700" },
-  BLOCKED: { label: "Blocked", bar: "bg-amber-500",   dot: "bg-amber-500",   text: "text-amber-700" },
-  SKIPPED: { label: "Skipped", bar: "bg-slate-400",   dot: "bg-slate-400",   text: "text-slate-600" },
-  PENDING: { label: "Pending", bar: "bg-slate-200 dark:bg-slate-700", dot: "bg-slate-300 dark:bg-slate-600", text: "text-slate-500 dark:text-slate-400" },
+const statusMeta: Record<StatusKey, { bar: string; dot: string; text: string }> = {
+  PASSED:  { bar: "bg-emerald-500", dot: "bg-emerald-500", text: "text-emerald-700" },
+  FAILED:  { bar: "bg-red-500",     dot: "bg-red-500",     text: "text-red-700" },
+  BLOCKED: { bar: "bg-amber-500",   dot: "bg-amber-500",   text: "text-amber-700" },
+  SKIPPED: { bar: "bg-slate-400",   dot: "bg-slate-400",   text: "text-slate-600" },
+  PENDING: { bar: "bg-slate-200 dark:bg-slate-700", dot: "bg-slate-300 dark:bg-slate-600", text: "text-slate-500 dark:text-slate-400" },
 };
 
 const statusOrder: StatusKey[] = ["PASSED", "FAILED", "BLOCKED", "SKIPPED", "PENDING"];
@@ -124,7 +124,7 @@ export function Dashboard() {
       <div className="card p-5">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold">{t("dashboard.execution_status")}</h2>
-          <span className="text-xs text-slate-500">{totalExec} total</span>
+          <span className="text-xs text-slate-500">{t("dashboard.total_count", { count: totalExec })}</span>
         </div>
         {totalExec === 0 ? (
           <div className="text-sm text-slate-500">—</div>
@@ -140,7 +140,7 @@ export function Dashboard() {
                     key={s}
                     className={statusMeta[s].bar}
                     style={{ width: `${pct}%` }}
-                    title={`${statusMeta[s].label}: ${count}`}
+                    title={`${t(`status.${s}`)}: ${count}`}
                   />
                 );
               })}
@@ -153,7 +153,7 @@ export function Dashboard() {
                   <div key={s} className="flex items-center gap-2">
                     <span className={`h-2.5 w-2.5 rounded-full ${statusMeta[s].dot}`} />
                     <div className="min-w-0">
-                      <div className={`text-xs uppercase font-semibold ${statusMeta[s].text}`}>{s}</div>
+                      <div className={`text-xs uppercase font-semibold ${statusMeta[s].text}`}>{t(`status.${s}`)}</div>
                       <div className="text-sm font-medium">
                         {count} <span className="text-slate-400 text-xs">· {pct}%</span>
                       </div>
@@ -174,8 +174,8 @@ export function Dashboard() {
               {t("dashboard.trend_30d")}
             </h2>
             <div className="text-xs text-slate-500 flex items-center gap-3">
-              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-violet-500" /> Executions</span>
-              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" /> Pass rate</span>
+              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-violet-500" /> {t("dashboard.executions_label")}</span>
+              <span className="inline-flex items-center gap-1"><span className="h-2 w-2 rounded-full bg-emerald-500" /> {t("dashboard.pass_rate_label")}</span>
             </div>
           </div>
           <TrendChart trend={data.trend} />
@@ -200,7 +200,7 @@ export function Dashboard() {
                     <div className="flex items-center justify-between gap-2 mb-1">
                       <div className="font-medium truncate">{m.name}</div>
                       <span className={`badge ${tone === "emerald" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300" : tone === "red" ? "bg-red-100 text-red-700 dark:bg-red-500/15 dark:text-red-300" : "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"}`}>
-                        {ready ? "READY" : m.blockerOpen > 0 ? `${m.blockerOpen} BLOCKERS` : "IN PROGRESS"}
+                        {ready ? t("dashboard.readiness_READY") : m.blockerOpen > 0 ? `${m.blockerOpen} ${t("dashboard.readiness_BLOCKERS")}` : t("dashboard.readiness_IN_PROGRESS")}
                       </span>
                     </div>
                     <div className="h-1.5 rounded-full bg-slate-100 dark:bg-slate-800 overflow-hidden flex">
@@ -210,9 +210,9 @@ export function Dashboard() {
                     </div>
                     <div className="text-xs text-slate-500 mt-1 flex items-center gap-3 flex-wrap">
                       <span>{m.project.name}</span>
-                      <span>{m.executedPct}% executed</span>
-                      <span>{m.passRateOfExecuted}% pass</span>
-                      {m.dueDate && <span>due {new Date(m.dueDate).toLocaleDateString()}</span>}
+                      <span>{t("dashboard.executed_pct", { pct: m.executedPct })}</span>
+                      <span>{t("dashboard.pass_pct", { pct: m.passRateOfExecuted })}</span>
+                      {m.dueDate && <span>{t("dashboard.due", { date: new Date(m.dueDate).toLocaleDateString() })}</span>}
                     </div>
                   </li>
                 );
@@ -250,7 +250,7 @@ export function Dashboard() {
                 );
               })}
               <div className="text-xs text-slate-500 pt-2">
-                {data.defectAging.totalFailed} total failing executions (local timestamp)
+                {t("dashboard.total_failing", { count: data.defectAging.totalFailed })}
               </div>
             </div>
           )}

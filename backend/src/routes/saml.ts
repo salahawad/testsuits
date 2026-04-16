@@ -59,12 +59,12 @@ samlRouter.put("/config", requireAdmin, async (req: AuthedRequest, res, next) =>
 samlRouter.get("/:slug/login", async (req, res, next) => {
   try {
     const company = await prisma.company.findUnique({ where: { slug: req.params.slug } });
-    if (!company) throw httpError(404, "Unknown company");
+    if (!company) throw httpError(404, "COMPANY_NOT_FOUND");
     const cfg = await prisma.samlConfig.findUnique({ where: { companyId: company.id } });
-    if (!cfg?.enabled) throw httpError(404, "SSO not enabled");
+    if (!cfg?.enabled) throw httpError(404, "SSO_NOT_ENABLED");
     // TODO: build and redirect to AuthnRequest.
     res.status(501).json({
-      error: "SAML SSO is scaffolded but not yet built against a real IdP",
+      error: "SAML_NOT_IMPLEMENTED",
       hint: "Install passport-saml and wire this handler — see routes/saml.ts comments",
       ssoUrl: cfg.ssoUrl,
     });
@@ -74,9 +74,9 @@ samlRouter.get("/:slug/login", async (req, res, next) => {
 samlRouter.post("/:slug/acs", async (req, res, next) => {
   try {
     const company = await prisma.company.findUnique({ where: { slug: req.params.slug } });
-    if (!company) throw httpError(404, "Unknown company");
+    if (!company) throw httpError(404, "COMPANY_NOT_FOUND");
     const cfg = await prisma.samlConfig.findUnique({ where: { companyId: company.id } });
-    if (!cfg?.enabled) throw httpError(404, "SSO not enabled");
+    if (!cfg?.enabled) throw httpError(404, "SSO_NOT_ENABLED");
 
     // DO NOT accept a pre-validated `{email, name}` body here. In production
     // that's an account-takeover primitive — anyone who knows a company slug
@@ -97,7 +97,7 @@ samlRouter.post("/:slug/acs", async (req, res, next) => {
     if (!allowStub) {
       logger.warn({ slug: req.params.slug, companyId: company.id }, "saml acs hit without validator — rejecting");
       return res.status(501).json({
-        error: "SAML SSO is scaffolded but assertion validation is not implemented",
+        error: "SAML_NOT_IMPLEMENTED",
         hint: "Wire @node-saml/node-saml into routes/saml.ts. Do not deploy this endpoint to production until then.",
       });
     }

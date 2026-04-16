@@ -6,6 +6,7 @@ import { httpError } from "../middleware/error";
 import { caseWhere, projectWhere, runWhere, suiteWhere } from "../middleware/scope";
 import { logActivity } from "../lib/activity";
 import { dispatchWebhook } from "../lib/webhooks";
+import { logger } from "../lib/logger";
 
 export const runsRouter = Router();
 
@@ -30,11 +31,17 @@ const createSchema = z.object({
 
 runsRouter.get("/", async (req: AuthedRequest, res, next) => {
   try {
-    const { projectId, milestoneId, status } = req.query as Record<string, string | undefined>;
+    const { projectId, milestoneId, status, archived } = req.query as Record<string, string | undefined>;
     const extra: any = {};
     if (projectId) extra.projectId = projectId;
     if (milestoneId) extra.milestoneId = milestoneId;
-    if (status) extra.status = status;
+    if (status) {
+      extra.status = status;
+    } else if (archived === "true") {
+      extra.status = "ARCHIVED";
+    } else {
+      extra.status = { not: "ARCHIVED" };
+    }
     const runs = await prisma.testRun.findMany({
       where: runWhere(req.user!, extra),
       orderBy: { createdAt: "desc" },
@@ -55,7 +62,7 @@ runsRouter.post("/", requireManager, async (req: AuthedRequest, res, next) => {
   try {
     const data = createSchema.parse(req.body);
     const project = await prisma.project.findFirst({ where: projectWhere(req.user!, { id: data.projectId }), select: { id: true } });
-    if (!project) throw httpError(404, "Project not found");
+    if (!project) throw httpError(404, "PROJECT_NOT_FOUND");
 
     const caseIds = new Set(data.caseIds ?? []);
     if (data.suiteIds?.length) {
@@ -68,14 +75,14 @@ runsRouter.post("/", requireManager, async (req: AuthedRequest, res, next) => {
       });
       cases.forEach((c) => caseIds.add(c.id));
     }
-    if (caseIds.size === 0) throw httpError(400, "A run must include at least one case");
+    if (caseIds.size === 0) throw httpError(400, "RUN_REQUIRES_CASES");
 
     if (data.assigneeId) {
       const assignee = await prisma.user.findFirst({
         where: { id: data.assigneeId, companyId: req.user!.companyId },
         select: { id: true },
       });
-      if (!assignee) throw httpError(400, "Assignee is not a member of your company");
+      if (!assignee) throw httpError(400, "ASSIGNEE_NOT_IN_COMPANY");
     }
 
     const run = await prisma.testRun.create({
@@ -98,6 +105,8 @@ runsRouter.post("/", requireManager, async (req: AuthedRequest, res, next) => {
         },
       },
     });
+
+    req.log.info({ runId: run.id, projectId: data.projectId, userId: req.user!.id, caseCount: caseIds.size }, "run created");
 
     await logActivity({
       projectId: run.projectId,
@@ -142,7 +151,7 @@ runsRouter.get("/:id", async (req: AuthedRequest, res, next) => {
         },
       },
     });
-    if (!run) throw httpError(404, "Run not found");
+    if (!run) throw httpError(404, "RUN_NOT_FOUND");
 
     // Tester sees only their own executions within the run
     if (req.user!.role === "TESTER") {
@@ -159,7 +168,7 @@ runsRouter.get("/:id", async (req: AuthedRequest, res, next) => {
 runsRouter.patch("/:id", requireManager, async (req: AuthedRequest, res, next) => {
   try {
     const owned = await prisma.testRun.findFirst({ where: runWhere(req.user!, { id: req.params.id }), select: { id: true, projectId: true } });
-    if (!owned) throw httpError(404, "Run not found");
+    if (!owned) throw httpError(404, "RUN_NOT_FOUND");
     const data = z
       .object({
         name: z.string().trim().min(1, "Run name cannot be empty").optional(),
@@ -181,6 +190,7 @@ runsRouter.patch("/:id", requireManager, async (req: AuthedRequest, res, next) =
         completedAt: data.status === "COMPLETED" ? new Date() : undefined,
       },
     });
+    req.log.info({ runId: req.params.id, userId: req.user!.id, status: data.status }, "run updated");
     if (data.status) {
       await logActivity({
         projectId: run.projectId,
@@ -197,6 +207,14 @@ runsRouter.patch("/:id", requireManager, async (req: AuthedRequest, res, next) =
           payload: { runId: run.id, name: run.name, completedBy: req.user!.id },
         });
       }
+      if (data.status === "ARCHIVED") {
+        req.log.info({ runId: run.id, projectId: run.projectId }, "run archived");
+        dispatchWebhook({
+          projectId: run.projectId,
+          event: "run.archived",
+          payload: { runId: run.id, name: run.name, archivedBy: req.user!.id },
+        });
+      }
     }
     res.json(run);
   } catch (e) {
@@ -207,8 +225,9 @@ runsRouter.patch("/:id", requireManager, async (req: AuthedRequest, res, next) =
 runsRouter.delete("/:id", requireManager, async (req: AuthedRequest, res, next) => {
   try {
     const owned = await prisma.testRun.findFirst({ where: runWhere(req.user!, { id: req.params.id }), select: { id: true } });
-    if (!owned) throw httpError(404, "Run not found");
+    if (!owned) throw httpError(404, "RUN_NOT_FOUND");
     await prisma.testRun.delete({ where: { id: req.params.id } });
+    req.log.info({ runId: req.params.id, userId: req.user!.id }, "run deleted");
     res.status(204).end();
   } catch (e) {
     next(e);
@@ -229,7 +248,7 @@ runsRouter.get("/:id/export.csv", async (req: AuthedRequest, res, next) => {
         },
       },
     });
-    if (!run) throw httpError(404, "Run not found");
+    if (!run) throw httpError(404, "RUN_NOT_FOUND");
 
     const execs = req.user!.role === "TESTER"
       ? run.executions.filter((e) => e.assigneeId === req.user!.id || e.executedById === req.user!.id)

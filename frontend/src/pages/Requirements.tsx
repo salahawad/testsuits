@@ -8,6 +8,7 @@ import { useConfirm } from "../components/ui/ConfirmDialog";
 import { z } from "zod";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { logger } from "../lib/logger";
 import { Field } from "../components/Field";
 import { useZodForm } from "../lib/useZodForm";
 import { nonEmpty } from "../lib/schemas";
@@ -61,20 +62,25 @@ export function Requirements() {
   const create = useMutation({
     mutationFn: async (values: Values) =>
       (await api.post(`/requirements`, { projectId, ...values, description: values.description || null }, { silent: true })).data,
-    onSuccess: () => {
+    onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["requirements", projectId] });
       setOpen(false);
       form.reset({ externalRef: "", title: "", description: "" });
       setSubmitError(null);
+      logger.info("requirement created", { requirementId: data.id, projectId });
     },
-    onError: (e: unknown) => setSubmitError(apiErrorMessage(e, "Create failed")),
+    onError: (e: unknown) => {
+      logger.warn("requirement creation failed", { err: e });
+      setSubmitError(apiErrorMessage(e, t("common.something_went_wrong")));
+    },
   });
 
   const remove = useMutation({
     mutationFn: async (id: string) => api.delete(`/requirements/${id}`),
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       qc.invalidateQueries({ queryKey: ["requirements", projectId] });
       toast.success(t("common.deleted"));
+      logger.info("requirement removed", { requirementId: id, projectId });
     },
   });
 
@@ -121,7 +127,7 @@ export function Requirements() {
             <input
               className="input"
               autoFocus
-              placeholder="ACME-1201 or https://jira.example.com/browse/ACME-1201"
+              placeholder={t("requirements.external_ref_placeholder")}
               {...form.register("externalRef")}
             />
           </Field>

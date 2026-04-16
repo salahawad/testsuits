@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Copy, Plus, Trash2 } from "lucide-react";
+import { Copy, Lock, Plus, Trash2, Unlock } from "lucide-react";
 import { z } from "zod";
 import { toast } from "sonner";
 import { api } from "../lib/api";
@@ -9,7 +9,7 @@ import { useAuth } from "../lib/auth";
 import { logger } from "../lib/logger";
 import { Field } from "../components/Field";
 import { useZodForm } from "../lib/useZodForm";
-import { emailField, nonEmpty, roleEnum } from "../lib/schemas";
+import { emailFieldWithMessages, roleEnum } from "../lib/schemas";
 import { apiErrorMessage } from "../lib/apiError";
 import { Button } from "../components/ui/Button";
 import { PageHeader } from "../components/ui/PageHeader";
@@ -25,15 +25,16 @@ type InviteResult = {
   devToken?: string;
 };
 
-const inviteSchema = z.object({
-  name: nonEmpty("Name"),
-  email: emailField,
-  role: roleEnum,
-});
-type InviteValues = z.infer<typeof inviteSchema>;
+type InviteValues = { name: string; email: string; role: "ADMIN" | "MANAGER" | "TESTER" | "VIEWER" };
 
 export function Team() {
   const { t } = useTranslation();
+
+  const inviteSchema = useMemo(() => z.object({
+    name: z.string().min(1, t("validation.name_required")),
+    email: emailFieldWithMessages(t),
+    role: roleEnum,
+  }), [t]);
   const user = useAuth((s) => s.user);
   const qc = useQueryClient();
   const confirm = useConfirm();
@@ -62,23 +63,38 @@ export function Team() {
       toast.success(t("team.invite_sent"));
       logger.info("teammate invite created");
     },
-    onError: (e: unknown) => setSubmitError(apiErrorMessage(e, "Invite failed")),
+    onError: (e: unknown) => {
+      logger.warn("invite failed");
+      setSubmitError(apiErrorMessage(e, t("common.something_went_wrong")));
+    },
   });
 
   const remove = useMutation({
     mutationFn: async (id: string) => api.delete(`/users/${id}`),
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       qc.invalidateQueries({ queryKey: ["users"] });
       toast.success(t("team.member_removed"));
+      logger.info("team member removed");
     },
   });
 
   const changeRole = useMutation({
     mutationFn: async ({ id, role }: { id: string; role: string }) =>
       (await api.patch(`/users/${id}`, { role })).data,
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ["users"] });
       toast.success(t("team.role_updated"));
+      logger.info("team member role changed");
+    },
+  });
+
+  const toggleLock = useMutation({
+    mutationFn: async ({ id, locked }: { id: string; locked: boolean }) =>
+      (await api.patch(`/users/${id}/lock`, { locked })).data,
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ["users"] });
+      toast.success(vars.locked ? t("team.user_locked") : t("team.user_unlocked"));
+      logger.info(vars.locked ? "user locked" : "user unlocked");
     },
   });
 
@@ -172,11 +188,16 @@ export function Team() {
       )}
 
       <div className="card divide-y divide-slate-100 dark:divide-slate-800">
-        {users.map((u: { id: string; name: string; email: string; role: string }) => (
-          <div key={u.id} className="flex items-center justify-between px-5 py-3">
-            <div>
-              <div className="font-medium">{u.name}</div>
-              <div className="text-xs text-slate-500">{u.email}</div>
+        {users.map((u: { id: string; name: string; email: string; role: string; isLocked?: boolean }) => (
+          <div key={u.id} className={`flex items-center justify-between px-5 py-3${u.isLocked ? " opacity-60" : ""}`}>
+            <div className="flex items-center gap-2">
+              <div>
+                <div className="font-medium flex items-center gap-1.5">
+                  {u.name}
+                  {u.isLocked && <Badge tone="danger">{t("team.locked")}</Badge>}
+                </div>
+                <div className="text-xs text-slate-500">{u.email}</div>
+              </div>
             </div>
             <div className="flex items-center gap-2">
               {isManager && u.id !== user?.id ? (
@@ -193,6 +214,23 @@ export function Team() {
                 <Badge tone={u.role === "MANAGER" ? "violet" : "neutral"}>
                   {t(`team.${u.role.toLowerCase()}`)}
                 </Badge>
+              )}
+              {isManager && u.id !== user?.id && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  aria-label={u.isLocked ? t("team.unlock") : t("team.lock")}
+                  className={u.isLocked ? "text-amber-500 hover:text-green-600" : "text-slate-400 hover:text-amber-600"}
+                  loading={toggleLock.isPending && toggleLock.variables?.id === u.id}
+                  onClick={async () => {
+                    const action = u.isLocked
+                      ? { title: t("team.unlock_confirm"), confirmLabel: t("team.unlock"), tone: "neutral" as const }
+                      : { title: t("team.lock_confirm"), confirmLabel: t("team.lock"), tone: "danger" as const };
+                    if (await confirm(action)) toggleLock.mutate({ id: u.id, locked: !u.isLocked });
+                  }}
+                >
+                  {!(toggleLock.isPending && toggleLock.variables?.id === u.id) && (u.isLocked ? <Unlock size={14} /> : <Lock size={14} />)}
+                </Button>
               )}
               {isManager && u.id !== user?.id && (
                 <Button

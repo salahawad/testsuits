@@ -19,7 +19,7 @@ function hashToken(plaintext: string) {
 const limiterCommon = {
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Too many requests. Please try again later." },
+  message: { error: "RATE_LIMIT_EXCEEDED" },
 };
 const setupLimiter = rateLimit({ windowMs: 60_000, max: 10, ...limiterCommon });
 const authLimiter = rateLimit({ windowMs: 60_000, max: 10, ...limiterCommon });
@@ -48,7 +48,7 @@ twoFactorRouter.post("/setup", setupLimiter, async (req: AuthedRequest, res, nex
       where: { id: req.user!.id },
       select: { totpEnabledAt: true, email: true },
     });
-    if (user.totpEnabledAt) throw httpError(409, "2FA is already enabled");
+    if (user.totpEnabledAt) throw httpError(409, "TWO_FA_ALREADY_ENABLED");
 
     const secret = generateSecret();
     const otpauthUri = generateURI({ issuer: "TestSuits", label: user.email, secret });
@@ -78,11 +78,11 @@ twoFactorRouter.post("/confirm-setup", setupLimiter, async (req: AuthedRequest, 
       where: { id: req.user!.id },
       select: { totpSecret: true, totpEnabledAt: true },
     });
-    if (user.totpEnabledAt) throw httpError(409, "2FA is already enabled");
-    if (!user.totpSecret) throw httpError(400, "No 2FA setup in progress — call /2fa/setup first");
+    if (user.totpEnabledAt) throw httpError(409, "TWO_FA_ALREADY_ENABLED");
+    if (!user.totpSecret) throw httpError(400, "TWO_FA_SETUP_NOT_STARTED");
 
     const valid = verifySync({ secret: user.totpSecret, token: code }).valid;
-    if (!valid) throw httpError(400, "Invalid code — please try again");
+    if (!valid) throw httpError(400, "TWO_FA_INVALID_CODE");
 
     await prisma.user.update({
       where: { id: req.user!.id },
@@ -106,10 +106,10 @@ twoFactorRouter.post("/disable", setupLimiter, async (req: AuthedRequest, res, n
       where: { id: req.user!.id },
       select: { passwordHash: true, totpEnabledAt: true },
     });
-    if (!user.totpEnabledAt) throw httpError(400, "2FA is not enabled");
+    if (!user.totpEnabledAt) throw httpError(400, "TWO_FA_NOT_ENABLED");
 
     const ok = await bcrypt.compare(password, user.passwordHash);
-    if (!ok) throw httpError(401, "Incorrect password");
+    if (!ok) throw httpError(401, "INCORRECT_PASSWORD");
 
     await prisma.$transaction([
       prisma.user.update({
@@ -143,7 +143,7 @@ twoFactorRouter.post("/authenticate", authLimiter, async (req, res, next) => {
     try {
       userId = verifyChallengeToken(challengeToken);
     } catch {
-      throw httpError(401, "Challenge token is invalid or expired — please sign in again");
+      throw httpError(401, "CHALLENGE_TOKEN_INVALID");
     }
 
     const user = await prisma.user.findUnique({
@@ -151,11 +151,11 @@ twoFactorRouter.post("/authenticate", authLimiter, async (req, res, next) => {
       include: { company: true },
     });
     if (!user || !user.totpEnabledAt || !user.totpSecret) {
-      throw httpError(400, "2FA is not enabled for this account");
+      throw httpError(400, "TWO_FA_NOT_ENABLED");
     }
 
     const valid = verifySync({ secret: user.totpSecret, token: code }).valid;
-    if (!valid) throw httpError(401, "Invalid 2FA code");
+    if (!valid) throw httpError(401, "TWO_FA_INVALID_CODE");
 
     // Issue a trusted-device token so this device can skip 2FA for 30 days.
     let trustToken: string | undefined;

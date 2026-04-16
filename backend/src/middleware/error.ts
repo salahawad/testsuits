@@ -7,7 +7,7 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
 
   if (err instanceof ZodError) {
     reqLog.warn({ validation: err.flatten() }, "request validation failed");
-    return res.status(400).json({ error: "Validation failed", details: err.flatten() });
+    return res.status(400).json({ error: "VALIDATION_FAILED", details: err.flatten() });
   }
   if (err instanceof Error) {
     const status = (err as { status?: number }).status ?? 500;
@@ -19,7 +19,7 @@ export function errorHandler(err: unknown, req: Request, res: Response, _next: N
     return res.status(status).json({ error: err.message });
   }
   reqLog.error({ err }, "unhandled non-Error thrown");
-  res.status(500).json({ error: "Internal server error" });
+  res.status(500).json({ error: "INTERNAL_SERVER_ERROR" });
 }
 
 export function httpError(status: number, message: string) {

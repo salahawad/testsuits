@@ -56,31 +56,37 @@ export function WebhooksEditor({ projectId, canEdit }: { projectId: string; canE
       toast.success(t("webhooks.created"));
       logger.info("webhook created", { projectId });
     },
-    onError: (e: any) => setErr(e.response?.data?.error ?? "Save failed"),
+    onError: (e: any) => {
+      logger.warn("webhook creation failed", { err: e });
+      setErr(e.response?.data?.error ?? t("common.save_failed"));
+    },
   });
 
   const toggle = useMutation({
     mutationFn: async (hook: Webhook) =>
       (await api.patch(`/webhooks/${hook.id}`, { active: !hook.active })).data,
-    onSuccess: () => {
+    onSuccess: (_data, hook) => {
       qc.invalidateQueries({ queryKey: ["webhooks", projectId] });
       toast.success(t("common.saved"));
+      logger.info("webhook toggled", { webhookId: hook.id, active: !hook.active });
     },
   });
 
   const remove = useMutation({
     mutationFn: async (hookId: string) => api.delete(`/webhooks/${hookId}`),
-    onSuccess: () => {
+    onSuccess: (_data, hookId) => {
       qc.invalidateQueries({ queryKey: ["webhooks", projectId] });
       toast.success(t("common.deleted"));
+      logger.info("webhook removed", { webhookId: hookId });
     },
   });
 
   const test = useMutation({
     mutationFn: async (hookId: string) => (await api.post(`/webhooks/${hookId}/test`)).data,
-    onSuccess: () => {
+    onSuccess: (_data, hookId) => {
       qc.invalidateQueries({ queryKey: ["webhooks", projectId] });
       toast.success(t("webhooks.test_sent"));
+      logger.info("webhook test sent", { webhookId: hookId });
     },
   });
 
@@ -109,7 +115,7 @@ export function WebhooksEditor({ projectId, canEdit }: { projectId: string; canE
         <form onSubmit={onSubmit} className="border border-slate-200 dark:border-slate-700 rounded p-3 space-y-3">
           <div>
             <label className="label">{t("webhooks.url")}</label>
-            <input className="input" type="url" required value={url} placeholder="https://example.com/hook"
+            <input className="input" type="url" required value={url} placeholder={t("webhooks.url_placeholder")}
               onChange={(e) => setUrl(e.target.value)} />
           </div>
           <div>

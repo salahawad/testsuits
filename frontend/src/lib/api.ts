@@ -72,6 +72,18 @@ api.interceptors.response.use(
       return Promise.reject(error);
     }
 
+    if (status === 423) {
+      const msg = t("errors.account_locked");
+      if (!onLogin) {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+        localStorage.removeItem("trustToken");
+        localStorage.setItem(LOGIN_FLASH_KEY, msg);
+        window.location.href = "/login";
+      }
+      return Promise.reject(error);
+    }
+
     if (!shouldSuppressToast(error)) {
       if (status === 403) {
         const msg = error.response.data?.error || t("errors.forbidden");

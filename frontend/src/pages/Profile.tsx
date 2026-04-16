@@ -8,7 +8,7 @@ import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useZodForm } from "../lib/useZodForm";
 import { PasswordInput } from "../components/PasswordInput";
-import { nonEmpty, passwordPolicy } from "../lib/schemas";
+import { nonEmpty, passwordPolicyWithMessages } from "../lib/schemas";
 import { apiErrorMessage } from "../lib/apiError";
 import { logger } from "../lib/logger";
 import { PageHeader } from "../components/ui/PageHeader";
@@ -197,22 +197,23 @@ function ProfileSection() {
 
 // --- Password form ----------------------------------------------------------
 
-const passwordSchema = z
-  .object({
-    currentPassword: z.string().min(1, "Current password is required"),
-    newPassword: passwordPolicy,
-    confirmPassword: z.string().min(1, "Confirm your new password"),
-  })
-  .refine((d) => d.newPassword === d.confirmPassword, {
-    message: "Passwords do not match",
-    path: ["confirmPassword"],
-  });
-type PasswordValues = z.infer<typeof passwordSchema>;
+type PasswordValues = { currentPassword: string; newPassword: string; confirmPassword: string };
 
 function PasswordSection() {
   const { t } = useTranslation();
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+
+  const passwordSchema = useMemo(() => z
+    .object({
+      currentPassword: z.string().min(1, t("validation.current_password_required")),
+      newPassword: passwordPolicyWithMessages(t),
+      confirmPassword: z.string().min(1, t("validation.confirm_password_required")),
+    })
+    .refine((d) => d.newPassword === d.confirmPassword, {
+      message: t("validation.passwords_no_match"),
+      path: ["confirmPassword"],
+    }), [t]);
 
   const form = useZodForm<PasswordValues>(passwordSchema, {
     defaultValues: { currentPassword: "", newPassword: "", confirmPassword: "" },
@@ -274,7 +275,9 @@ function TwoFactorSection() {
   const [disablePassword, setDisablePassword] = useState("");
 
   useEffect(() => {
-    api.get("/2fa/status").then(({ data }) => setEnabled(data.enabled));
+    api.get("/2fa/status").then(({ data }) => setEnabled(data.enabled)).catch((err) => {
+      logger.warn("failed to load 2fa status", { err });
+    });
   }, []);
 
   const setup = useMutation({

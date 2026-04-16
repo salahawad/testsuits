@@ -29,18 +29,18 @@ async function accessibleAttachment(req: AuthedRequest, id: string) {
 
 attachmentsRouter.post("/", requireWrite, upload.single("file"), async (req: AuthedRequest, res, next) => {
   try {
-    if (!req.file) throw httpError(400, "No file uploaded");
+    if (!req.file) throw httpError(400, "NO_FILE_UPLOADED");
     const { caseId, executionId } = req.body as { caseId?: string; executionId?: string };
-    if (!caseId && !executionId) throw httpError(400, "caseId or executionId required");
+    if (!caseId && !executionId) throw httpError(400, "CASE_OR_EXECUTION_REQUIRED");
 
     // Authorize target ownership before writing.
     if (caseId) {
       const c = await prisma.testCase.findFirst({ where: caseWhere(req.user!, { id: caseId }), select: { id: true } });
-      if (!c) throw httpError(404, "Case not found");
+      if (!c) throw httpError(404, "CASE_NOT_FOUND");
     }
     if (executionId) {
       const e = await prisma.testExecution.findFirst({ where: executionWhere(req.user!, { id: executionId }), select: { id: true } });
-      if (!e) throw httpError(404, "Execution not found");
+      if (!e) throw httpError(404, "EXECUTION_NOT_FOUND");
     }
 
     const storageKey = `${caseId ? `cases/${caseId}` : `executions/${executionId}`}/${randomUUID()}-${req.file.originalname}`;
@@ -71,7 +71,7 @@ attachmentsRouter.post("/", requireWrite, upload.single("file"), async (req: Aut
 attachmentsRouter.get("/:id/download", async (req: AuthedRequest, res, next) => {
   try {
     const attachment = await accessibleAttachment(req, req.params.id);
-    if (!attachment) throw httpError(404, "Attachment not found");
+    if (!attachment) throw httpError(404, "ATTACHMENT_NOT_FOUND");
     const url = await getDownloadUrl(attachment.storageKey, attachment.filename);
     res.json({ url });
   } catch (e) {
@@ -82,9 +82,10 @@ attachmentsRouter.get("/:id/download", async (req: AuthedRequest, res, next) => 
 attachmentsRouter.delete("/:id", requireWrite, async (req: AuthedRequest, res, next) => {
   try {
     const attachment = await accessibleAttachment(req, req.params.id);
-    if (!attachment) throw httpError(404, "Attachment not found");
+    if (!attachment) throw httpError(404, "ATTACHMENT_NOT_FOUND");
     await deleteObject(attachment.storageKey);
     await prisma.attachment.delete({ where: { id: req.params.id } });
+    req.log.info({ attachmentId: req.params.id, storageKey: attachment.storageKey, userId: req.user!.id }, "attachment deleted");
     res.status(204).end();
   } catch (e) {
     next(e);

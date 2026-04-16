@@ -113,7 +113,7 @@ export function Matrix() {
                             <span className={`badge ${execStatusColors[cell.status as keyof typeof execStatusColors] ?? "bg-slate-100 text-slate-500 dark:bg-slate-700/50 dark:text-slate-400"}`}>{cell.status}</span>
                           </Link>
                         ) : (
-                          <span className="badge bg-slate-100 text-slate-500 dark:bg-slate-700/50 dark:text-slate-400" title="Linked to requirement but never executed">{cell.status}</span>
+                          <span className="badge bg-slate-100 text-slate-500 dark:bg-slate-700/50 dark:text-slate-400" title={t("matrix.linked_not_executed")}>{cell.status}</span>
                         )
                       ) : (
                         <span className="text-slate-300">—</span>

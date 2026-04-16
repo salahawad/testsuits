@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, Navigate, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
@@ -14,25 +14,26 @@ import { LOGIN_FLASH_KEY } from "../lib/api";
 import { apiErrorMessage } from "../lib/apiError";
 import { logger } from "../lib/logger";
 import { useZodForm } from "../lib/useZodForm";
-import { emailField, loginPassword, passwordPolicy, nonEmpty } from "../lib/schemas";
+import { emailFieldWithMessages, loginPasswordWithMessages, passwordPolicyWithMessages } from "../lib/schemas";
 
-const loginSchema = z.object({
-  email: emailField,
-  password: loginPassword,
-});
-
-const signupSchema = z.object({
-  email: emailField,
-  password: passwordPolicy,
-  name: nonEmpty("Name"),
-  companyName: nonEmpty("Company name"),
-});
-
-type LoginValues = z.infer<typeof loginSchema>;
-type SignupValues = z.infer<typeof signupSchema>;
+type LoginValues = { email: string; password: string };
+type SignupValues = { email: string; password: string; name: string; companyName: string };
 
 export function Login() {
   const { t } = useTranslation();
+
+  const loginSchema = useMemo(() => z.object({
+    email: emailFieldWithMessages(t),
+    password: loginPasswordWithMessages(t),
+  }), [t]);
+
+  const signupSchema = useMemo(() => z.object({
+    email: emailFieldWithMessages(t),
+    password: passwordPolicyWithMessages(t),
+    name: z.string().min(1, t("validation.name_required")),
+    companyName: z.string().min(1, t("validation.company_name_required")),
+  }), [t]);
+
   const { user, login, signup, setSession } = useAuth();
   const navigate = useNavigate();
   const [mode, setMode] = useState<"login" | "signup">("login");
@@ -119,7 +120,8 @@ export function Login() {
     try {
       await api.post("/auth/resend-verification", { email: unverifiedEmail }, { silent: true });
       toast.success(t("verify_email.resent"));
-    } catch {
+    } catch (e) {
+      logger.warn("resend verification failed", { err: e });
       toast.error(t("common.something_went_wrong"));
     } finally {
       setResending(false);
@@ -140,6 +142,7 @@ export function Login() {
       logger.info("2fa auth success");
       navigate("/");
     } catch (e: unknown) {
+      logger.warn("2fa authentication failed", { err: e });
       setTotpError(apiErrorMessage(e, t("common.something_went_wrong")));
     } finally {
       setTotpBusy(false);

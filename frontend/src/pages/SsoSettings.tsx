@@ -5,6 +5,7 @@ import { Copy, ShieldCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { logger } from "../lib/logger";
 import { useConfirm } from "../components/ui/ConfirmDialog";
 
 type SamlConfig = {
@@ -66,8 +67,12 @@ export function SsoSettings() {
       qc.invalidateQueries({ queryKey: ["saml-config"] });
       setErr(null);
       toast.success(t("common.saved"));
+      logger.info("SAML config saved", { enabled: form.enabled, defaultRole: form.defaultRole });
     },
-    onError: (e: any) => setErr(e.response?.data?.error ?? t("common.something_went_wrong")),
+    onError: (e: any) => {
+      setErr(e.response?.data?.error ?? t("common.something_went_wrong"));
+      logger.warn("SAML config save failed", { error: String(e) });
+    },
   });
 
   const { data: tokens = [] } = useQuery<ScimTokenRow[]>({
@@ -83,14 +88,16 @@ export function SsoSettings() {
       setTokenName("");
       qc.invalidateQueries({ queryKey: ["scim-tokens"] });
       toast.success(t("sso.token_created"));
+      logger.info("SCIM token created", { tokenId: row.id });
     },
   });
 
   const revokeToken = useMutation({
     mutationFn: async (id: string) => api.delete(`/scim-tokens/${id}`),
-    onSuccess: () => {
+    onSuccess: (_data, tokenId) => {
       qc.invalidateQueries({ queryKey: ["scim-tokens"] });
       toast.success(t("common.deleted"));
+      logger.info("SCIM token revoked", { tokenId });
     },
   });
 
@@ -136,18 +143,18 @@ export function SsoSettings() {
 
         <div>
           <label className="label">{t("sso.entity_id")}</label>
-          <input className="input" placeholder="urn:testsuits:hapster" value={form.entityId}
+          <input className="input" placeholder={t("sso.entity_id_placeholder")} value={form.entityId}
             onChange={(e) => setForm({ ...form, entityId: e.target.value })} required />
         </div>
         <div>
           <label className="label">{t("sso.sso_url")}</label>
-          <input type="url" className="input" placeholder="https://idp.example.com/sso" value={form.ssoUrl}
+          <input type="url" className="input" placeholder={t("sso.sso_url_placeholder")} value={form.ssoUrl}
             onChange={(e) => setForm({ ...form, ssoUrl: e.target.value })} required />
         </div>
         <div>
           <label className="label">{t("sso.x509_cert")}</label>
           <textarea className="input font-mono text-xs" rows={6}
-            placeholder="-----BEGIN CERTIFICATE-----&#10;...&#10;-----END CERTIFICATE-----"
+            placeholder={t("sso.cert_placeholder")}
             value={form.x509Cert}
             onChange={(e) => setForm({ ...form, x509Cert: e.target.value })} required={!cfg} />
           {cfg && !form.x509Cert && <p className="text-xs text-slate-500 mt-1">{t("sso.cert_stored")}</p>}
@@ -167,10 +174,10 @@ export function SsoSettings() {
             <label className="label">{t("sso.default_role")}</label>
             <select className="input" value={form.defaultRole}
               onChange={(e) => setForm({ ...form, defaultRole: e.target.value as any })}>
-              <option value="VIEWER">VIEWER</option>
-              <option value="TESTER">TESTER</option>
-              <option value="MANAGER">MANAGER</option>
-              <option value="ADMIN">ADMIN</option>
+              <option value="VIEWER">{t("role.VIEWER")}</option>
+              <option value="TESTER">{t("role.TESTER")}</option>
+              <option value="MANAGER">{t("role.MANAGER")}</option>
+              <option value="ADMIN">{t("role.ADMIN")}</option>
             </select>
           </div>
         </div>

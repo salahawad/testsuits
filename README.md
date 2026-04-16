@@ -7,8 +7,9 @@ A self-hosted test management platform for manual functional QA. Organise projec
 - **Custom fields** — per-project configurable fields (text, long text, number, select, checkbox) that attach to every test case in the project.
 - **Shared / reusable steps** — a per-project library of named steps; insert one into any case from the step editor.
 - **Rich-text editor** — WYSIWYG (TipTap) with a toolbar (bold, italic, inline code, bullet/numbered lists, links, undo/redo) on the fields where formatting actually helps forensic detail: step action/expected, preconditions, shared-step library entries, and — on execution detail — *Actual result* and *Why it failed*. Stored and rendered as Markdown, so plain-text content round-trips and existing rows stay readable. Link URLs are restricted to `http(s)`/`mailto`/`tel` — `javascript:` and other schemes are blocked at both insert and render time.
-- **Webhooks** — configure outbound HTTP webhooks per project on events (`run.created`, `run.completed`, `execution.failed`, `execution.passed`, `jira.bug_created`). Optional HMAC-SHA256 signing, delivery log, test-fire button.
+- **Webhooks** — configure outbound HTTP webhooks per project on events (`run.created`, `run.completed`, `run.archived`, `execution.failed`, `execution.passed`, `jira.bug_created`). Optional HMAC-SHA256 signing, delivery log, test-fire button.
 - **Kanban run view** — toggle between list and kanban on the Runs page; managers drag cards between columns to change a run's status.
+- **Archive runs** — managers can archive a test run to remove it from the active list. An **Archived** tab on the Runs page shows all archived runs; managers can restore them back to active.
 - **Evidence storage** — upload screenshots, videos and logs against cases or executions.
 - **Full activity log** — per-project event stream with filters.
 - **CSV export** of run results.
@@ -18,13 +19,14 @@ A self-hosted test management platform for manual functional QA. Organise projec
 - **Remember me** — unchecked (default) sessions expire in 24 hours; checked sessions last 30 days. The choice carries through the 2FA step so the full flow honours it.
 - **Invite flow & password reset** — managers invite teammates via one-time signed links; users reset their own password from the sign-in page. Links go through SMTP (Mailpit in dev, any SMTP provider in prod), and the UI also surfaces a copyable dev link for local testing.
 - **Requirements & traceability** — first-class `Requirement` objects per project, with many-to-many links to test cases. The Coverage Matrix has a **Requirement** dimension that pivots the latest execution status per case under each linked requirement; unlinked cells are blank and linked-but-never-executed cells show `UNTESTED`.
+- **User locking** — managers can lock any user from the Team page. Locked users cannot sign in, use the app, or call the API (JWT and API-token requests return `423`). Unlock to restore access.
 - **Roles** — `ADMIN` (company settings, SSO/SCIM tokens, audit log), `MANAGER` (all project work), `TESTER` (runs/executions they own, created, or are assigned to; can execute and assign), `VIEWER` (read-only across the company).
 - **SCIM 2.0 user provisioning** — working. Issue a per-tenant SCIM token from Company Settings → SSO, point your IdP (Okta, Azure AD, JumpCloud) at `/api/scim/v2`. Groups and role-to-group mapping are not yet supported.
 - **SAML SSO — scaffolding only, not production-ready.** The per-company config UI and routes are in place, but `/saml/:slug/login` returns `501` and `/saml/:slug/acs` deliberately rejects requests until a real assertion parser is wired up (see comments in `backend/src/routes/saml.ts` for the exact steps — install `@node-saml/node-saml` and verify against `cfg.x509Cert`). Do not expose these routes to the public internet as-is.
 - **Audit log** — `/api/audit` surfaces the tenant-wide activity stream with user/action/date filters and CSV export for compliance reviews.
 - **Test case versioning** — every `PATCH /cases/:id` snapshots the prior state to `TestCaseRevision` and `GET /cases/:id/revisions` returns the full audit trail. The case detail page exposes a History panel that lists revisions with author/date/changed-field summary; a per-version field-level diff view is on the roadmap.
 - **Executive dashboard** — stat tiles, 30-day execution & pass-rate trend, release-readiness per milestone, defect aging buckets, top failing cases.
-- **i18n** — English and French built in with a language switcher; sidebar collapses for more canvas.
+- **i18n** — English and French built in with a language switcher; sidebar collapses for more canvas. All API error, warning, and info messages are returned as stable `UPPER_SNAKE_CASE` machine keys (e.g. `INVALID_CREDENTIALS`, `PROJECT_NOT_FOUND`); the frontend translates them via `t('errors.' + key)`. Validation messages, placeholders, and aria-labels are also served from the language files — no hardcoded English in `.tsx` files or API responses.
 - **Dark mode** — light by default. Toggle in the sidebar; the choice is saved in `localStorage` and applied pre-hydration so there's no flash on refresh. Toasts and the TipTap editor follow the theme automatically.
 
 ## Stack
@@ -295,7 +297,7 @@ The Coverage Matrix picks up a new dimension: select **Requirement** on the Matr
 ```
 Company
   ├── Users (MANAGER / TESTER)
-  │     ├── emailVerifiedAt, totpSecret, totpEnabledAt
+  │     ├── emailVerifiedAt, totpSecret, totpEnabledAt, isLocked
   │     ├── owned TestRuns
   │     ├── assigned TestExecutions
   │     ├── Comments
@@ -319,6 +321,7 @@ Company
         │           └── Comments
         └── TestRuns
               ├── Milestone (optional)
+              ├── status (PENDING/IN_PROGRESS/COMPLETED/ARCHIVED)
               ├── environment, platform, connectivity, locale, dueDate
               └── TestExecutions
                     ├── status (PENDING/PASSED/FAILED/BLOCKED/SKIPPED)
@@ -329,7 +332,7 @@ Company
                     └── Comments
 ```
 
-Enums: `Role` (`MANAGER`, `TESTER`), `Priority` (`LOW`/`MEDIUM`/`HIGH`/`CRITICAL`), `TestLevel` (`SMOKE`/`SANITY`/`REGRESSION`/`ADVANCED`/`EXPLORATORY`), `Platform` (`WEB`/`WINDOWS`/`MACOS`/`ANDROID`/`IOS`), `Connectivity` (`ONLINE`/`OFFLINE`).
+Enums: `Role` (`MANAGER`, `TESTER`), `RunStatus` (`PENDING`/`IN_PROGRESS`/`COMPLETED`/`ARCHIVED`), `Priority` (`LOW`/`MEDIUM`/`HIGH`/`CRITICAL`), `TestLevel` (`SMOKE`/`SANITY`/`REGRESSION`/`ADVANCED`/`EXPLORATORY`), `Platform` (`WEB`/`WINDOWS`/`MACOS`/`ANDROID`/`IOS`), `Connectivity` (`ONLINE`/`OFFLINE`).
 
 ### Role capabilities
 
@@ -339,9 +342,11 @@ Enums: `Role` (`MANAGER`, `TESTER`), `Priority` (`LOW`/`MEDIUM`/`HIGH`/`CRITICAL
 | View runs & executions                              | ✔     | ✔       | only those they created or are assigned to | ✔      |
 | Create/edit projects, suites, cases, milestones     | ✔     | ✔       | —                                         | —      |
 | Create test runs                                    | ✔     | ✔       | —                                         | —      |
+| Archive / restore test runs                         | ✔     | ✔       | —                                         | —      |
 | Execute tests (status, notes, duration, failure)    | ✔     | ✔       | ✔                                         | —      |
 | Assign / reassign executions (single & bulk)        | ✔     | ✔       | ✔                                         | —      |
 | Add / remove / change roles of teammates            | ✔     | ✔       | —                                         | —      |
+| Lock / unlock users                                 | ✔     | ✔       | —                                         | —      |
 | Company Jira credentials + templates                | ✔     | ✔       | view only                                 | view only |
 | Per-project Jira binding (target project, epic)     | ✔     | ✔       | view only                                 | view only |
 | Create / link / unlink Jira issues on executions    | ✔     | ✔       | ✔ (within their visible work)             | —      |
@@ -445,6 +450,8 @@ All routes live under `/api`. Authentication is required except the public endpo
 
 **Authentication:** send `Authorization: Bearer <token>` where `<token>` is either a JWT (interactive login) or an API token (`ts_…` prefix, SHA-256 hashed). API-token callers can't call the token management endpoints themselves — those require a JWT session.
 
+**Error responses** use stable machine keys, not English prose. Every error is returned as `{ "error": "UPPER_SNAKE_CASE_KEY" }` (e.g. `INVALID_CREDENTIALS`, `PROJECT_NOT_FOUND`, `RUN_REQUIRES_CASES`). Validation errors add a `details` object: `{ "error": "VALIDATION_FAILED", "details": { "formErrors": [], "fieldErrors": { ... } } }`. Clients should match on these keys, not on human-readable text.
+
 | Area              | Routes                                                                                                          |
 | ----------------- | --------------------------------------------------------------------------------------------------------------- |
 | Auth (public)     | `POST /auth/login`, `POST /auth/signup`, `POST /auth/forgot`, `POST /auth/reset`, `GET /auth/invite/:token`, `POST /auth/accept-invite`, `POST /auth/verify-email`, `POST /auth/resend-verification` |
@@ -452,7 +459,7 @@ All routes live under `/api`. Authentication is required except the public endpo
 | 2FA (public)      | `POST /2fa/authenticate`                                                                                        |
 | 2FA (auth)        | `GET /2fa/status`, `POST /2fa/setup`, `POST /2fa/confirm-setup`, `POST /2fa/disable`                            |
 | Tokens            | `GET /tokens`, `POST /tokens`, `DELETE /tokens/:id` — all require an interactive (JWT) session                  |
-| Users             | `GET /users`, `GET /users/me`, `POST /users` (mgr), `PATCH/DELETE /users/:id` (mgr)                             |
+| Users             | `GET /users`, `GET /users/me`, `POST /users` (mgr), `PATCH/DELETE /users/:id` (mgr), `PATCH /users/:id/lock` (mgr) |
 | Companies         | `GET /companies/current`, `PATCH /companies/current` (mgr)                                                      |
 | Projects          | `GET /projects`, `POST /projects` (mgr), `GET/PATCH/DELETE /projects/:id`, `GET/PUT /projects/:id/custom-fields` (PUT mgr) |
 | Requirements      | `GET /requirements?projectId=…`, `GET /requirements/:id`, `POST /requirements` (mgr), `PATCH/DELETE /requirements/:id` (mgr), `POST/DELETE /requirements/:id/cases[/:caseId]` (mgr) |
@@ -555,6 +562,7 @@ Each project can register outbound webhooks under **Project Settings → Webhook
 | ---------------------- | ---------------------------------------------------------------------- |
 | `run.created`          | a test run is created                                                  |
 | `run.completed`        | a test run's status is set to `COMPLETED`                              |
+| `run.archived`         | a test run is archived                                                 |
 | `execution.passed`     | an execution transitions to `PASSED`                                   |
 | `execution.failed`     | an execution transitions to `FAILED`                                   |
 | `jira.bug_created`     | a Jira bug is auto-filed for a failed execution                        |

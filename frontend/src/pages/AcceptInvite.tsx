@@ -1,13 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { logger } from "../lib/logger";
 import { Field } from "../components/Field";
 import { PasswordInput } from "../components/PasswordInput";
 import { useZodForm } from "../lib/useZodForm";
-import { passwordPolicy } from "../lib/schemas";
+import { passwordPolicyWithMessages } from "../lib/schemas";
 import { apiErrorMessage } from "../lib/apiError";
 import { InlineLoader } from "../components/Spinner";
 
@@ -18,16 +19,7 @@ type Preview = {
   company: { id: string; name: string; slug: string };
 };
 
-const schema = z
-  .object({
-    password: passwordPolicy,
-    confirm: z.string().min(1, "Please confirm your password"),
-  })
-  .refine((v) => v.password === v.confirm, {
-    path: ["confirm"],
-    message: "Passwords don't match",
-  });
-type Values = z.infer<typeof schema>;
+type Values = { password: string; confirm: string };
 
 export function AcceptInvite() {
   const { t } = useTranslation();
@@ -39,6 +31,16 @@ export function AcceptInvite() {
   const [loadErr, setLoadErr] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
+  const schema = useMemo(() => z
+    .object({
+      password: passwordPolicyWithMessages(t),
+      confirm: z.string().min(1, t("validation.confirm_password_required")),
+    })
+    .refine((v) => v.password === v.confirm, {
+      path: ["confirm"],
+      message: t("validation.passwords_no_match"),
+    }), [t]);
+
   const form = useZodForm<Values>(schema, { defaultValues: { password: "", confirm: "" } });
 
   useEffect(() => {
@@ -46,7 +48,10 @@ export function AcceptInvite() {
     api
       .get(`/auth/invite/${token}`, { silent: true })
       .then((r) => setPreview(r.data))
-      .catch((e) => setLoadErr(apiErrorMessage(e, t("auth_reset.invite_invalid"))));
+      .catch((e) => {
+        logger.warn("failed to load invite preview", { err: e });
+        setLoadErr(apiErrorMessage(e, t("auth_reset.invite_invalid")));
+      });
   }, [token, t]);
 
   async function onSubmit(values: Values) {
@@ -58,8 +63,10 @@ export function AcceptInvite() {
         { silent: true },
       );
       setSession(data.token, data.user);
+      logger.info("invite accepted");
       navigate("/");
     } catch (e: unknown) {
+      logger.warn("accept invite failed", { err: e });
       setSubmitError(apiErrorMessage(e, t("auth_reset.invite_invalid")));
     }
   }

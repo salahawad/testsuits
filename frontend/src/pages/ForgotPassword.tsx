@@ -1,18 +1,21 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
 import { api } from "../lib/api";
+import { logger } from "../lib/logger";
 import { Field } from "../components/Field";
 import { useZodForm } from "../lib/useZodForm";
-import { emailField } from "../lib/schemas";
+import { emailFieldWithMessages } from "../lib/schemas";
 import { apiErrorMessage } from "../lib/apiError";
 
-const schema = z.object({ email: emailField });
-type Values = z.infer<typeof schema>;
+type Values = { email: string };
 
 export function ForgotPassword() {
   const { t } = useTranslation();
+
+  const schema = useMemo(() => z.object({ email: emailFieldWithMessages(t) }), [t]);
+
   const [submitted, setSubmitted] = useState(false);
   const [devToken, setDevToken] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -25,7 +28,9 @@ export function ForgotPassword() {
       const { data } = await api.post("/auth/forgot", values, { silent: true });
       setSubmitted(true);
       if (data.devToken) setDevToken(data.devToken);
+      logger.info("password reset requested");
     } catch (e: unknown) {
+      logger.warn("forgot password request failed", { err: e });
       setSubmitError(apiErrorMessage(e, t("common.something_went_wrong")));
     }
   }

@@ -149,8 +149,8 @@ export function Layout({ children }: { children: React.ReactNode }) {
           <button
             onClick={() => setCollapsed((v) => !v)}
             className="hidden md:block p-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400"
-            aria-label={collapsed ? "Expand" : "Collapse"}
-            title={collapsed ? "Expand" : "Collapse"}
+            aria-label={collapsed ? t("common.expand") : t("common.collapse")}
+            title={collapsed ? t("common.expand") : t("common.collapse")}
           >
             {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
           </button>

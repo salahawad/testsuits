@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { logger } from "../lib/logger";
 
 type Target = { caseId?: string; executionId?: string; runId?: string };
 
@@ -25,14 +26,16 @@ export function Comments({ target }: { target: Target }) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: key });
       setBody("");
+      logger.info("comment added", { target });
     },
   });
 
   const remove = useMutation({
     mutationFn: async (id: string) => api.delete(`/comments/${id}`),
-    onSuccess: () => {
+    onSuccess: (_data, id) => {
       qc.invalidateQueries({ queryKey: key });
       toast.success(t("common.deleted"));
+      logger.info("comment removed", { commentId: id, target });
     },
   });
 
@@ -63,12 +66,12 @@ export function Comments({ target }: { target: Target }) {
             </div>
           </li>
         ))}
-        {comments.length === 0 && <li className="text-sm text-slate-500">No comments yet.</li>}
+        {comments.length === 0 && <li className="text-sm text-slate-500">{t("comments.none")}</li>}
       </ul>
       <form onSubmit={onSubmit} className="space-y-2">
-        <textarea className="input" rows={2} placeholder="Write a comment…" value={body} onChange={(e) => setBody(e.target.value)} />
+        <textarea className="input" rows={2} placeholder={t("comments.placeholder")} value={body} onChange={(e) => setBody(e.target.value)} />
         <div className="flex justify-end">
-          <button type="submit" className="btn-primary" disabled={add.isPending || !body.trim()}>Comment</button>
+          <button type="submit" className="btn-primary" disabled={add.isPending || !body.trim()}>{t("comments.submit")}</button>
         </div>
       </form>
     </div>

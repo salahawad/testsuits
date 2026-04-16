@@ -5,6 +5,7 @@ import { logger } from "./logger";
 export const WEBHOOK_EVENTS = [
   "run.created",
   "run.completed",
+  "run.archived",
   "execution.failed",
   "execution.passed",
   "jira.bug_created",

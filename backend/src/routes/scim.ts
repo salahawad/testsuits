@@ -33,6 +33,7 @@ scimTokensRouter.post("/", requireAdmin, async (req: AuthedRequest, res, next) =
       data: { companyId: req.user!.companyId, name, tokenHash: hash(raw) },
       select: { id: true, name: true, createdAt: true },
     });
+    req.log.info({ scimTokenId: row.id, companyId: req.user!.companyId, userId: req.user!.id }, "scim token created");
     res.status(201).json({ ...row, token: raw });
   } catch (e) { next(e); }
 });
@@ -40,6 +41,7 @@ scimTokensRouter.post("/", requireAdmin, async (req: AuthedRequest, res, next) =
 scimTokensRouter.delete("/:id", requireAdmin, async (req: AuthedRequest, res, next) => {
   try {
     await prisma.scimToken.deleteMany({ where: { id: req.params.id, companyId: req.user!.companyId } });
+    req.log.info({ scimTokenId: req.params.id, companyId: req.user!.companyId, userId: req.user!.id }, "scim token deleted");
     res.status(204).end();
   } catch (e) { next(e); }
 });
@@ -53,12 +55,12 @@ scimTokensRouter.delete("/:id", requireAdmin, async (req: AuthedRequest, res, ne
 async function scimAuth(req: Request, _res: Response, next: NextFunction) {
   try {
     const header = req.headers.authorization;
-    if (!header?.startsWith("Bearer ")) throw httpError(401, "Missing Bearer token");
+    if (!header?.startsWith("Bearer ")) throw httpError(401, "MISSING_BEARER_TOKEN");
     const token = header.slice(7);
-    if (!token.startsWith(SCIM_PREFIX)) throw httpError(401, "Invalid token prefix");
+    if (!token.startsWith(SCIM_PREFIX)) throw httpError(401, "INVALID_TOKEN_PREFIX");
     const row = await prisma.scimToken.findUnique({ where: { tokenHash: hash(token) } });
-    if (!row) throw httpError(401, "Invalid SCIM token");
-    prisma.scimToken.update({ where: { id: row.id }, data: { lastUsedAt: new Date() } }).catch(() => {});
+    if (!row) throw httpError(401, "INVALID_SCIM_TOKEN");
+    prisma.scimToken.update({ where: { id: row.id }, data: { lastUsedAt: new Date() } }).catch((err) => logger.warn({ err, tokenId: row.id }, "failed to update SCIM token lastUsedAt"));
     (req as any).scimCompanyId = row.companyId;
     next();
   } catch (e) { next(e); }
@@ -99,7 +101,7 @@ scimRouter.get("/v2/Users/:id", async (req, res, next) => {
   try {
     const companyId: string = (req as any).scimCompanyId;
     const user = await prisma.user.findFirst({ where: { id: req.params.id, companyId } });
-    if (!user) throw httpError(404, "User not found");
+    if (!user) throw httpError(404, "USER_NOT_FOUND");
     res.json(toScimUser(user));
   } catch (e) { next(e); }
 });
@@ -131,7 +133,7 @@ scimRouter.patch("/v2/Users/:id", async (req, res, next) => {
   try {
     const companyId: string = (req as any).scimCompanyId;
     const existing = await prisma.user.findFirst({ where: { id: req.params.id, companyId } });
-    if (!existing) throw httpError(404, "User not found");
+    if (!existing) throw httpError(404, "USER_NOT_FOUND");
     // Minimal PatchOp support: `{Operations:[{op:"replace", path, value}]}`.
     const ops = (req.body?.Operations ?? []) as Array<{ op: string; path?: string; value: any }>;
     const data: any = {};
@@ -145,6 +147,7 @@ scimRouter.patch("/v2/Users/:id", async (req, res, next) => {
       }
     }
     const user = await prisma.user.update({ where: { id: existing.id }, data });
+    logger.info({ userId: user.id, companyId, fields: Object.keys(data), via: "scim" }, "scim user updated");
     res.json(toScimUser(user));
   } catch (e) { next(e); }
 });
@@ -153,7 +156,7 @@ scimRouter.delete("/v2/Users/:id", async (req, res, next) => {
   try {
     const companyId: string = (req as any).scimCompanyId;
     const existing = await prisma.user.findFirst({ where: { id: req.params.id, companyId } });
-    if (!existing) throw httpError(404, "User not found");
+    if (!existing) throw httpError(404, "USER_NOT_FOUND");
     await prisma.user.delete({ where: { id: existing.id } });
     logger.info({ userId: existing.id, companyId, via: "scim" }, "user deprovisioned");
     res.status(204).end();

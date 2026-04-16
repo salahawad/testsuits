@@ -47,7 +47,7 @@ jiraRouter.put("/config", requireManager, async (req: AuthedRequest, res, next) 
     const data = companyConfigSchema.parse(req.body);
     const existing = await prisma.jiraConfig.findUnique({ where: { companyId: req.user!.companyId } });
     const apiToken = data.apiToken?.trim() ? data.apiToken : existing?.apiToken;
-    if (!apiToken) throw httpError(400, "API token is required on first configuration");
+    if (!apiToken) throw httpError(400, "JIRA_API_TOKEN_REQUIRED");
     const config = await prisma.jiraConfig.upsert({
       where: { companyId: req.user!.companyId },
       update: { ...data, apiToken },
@@ -73,8 +73,10 @@ jiraRouter.delete("/config", requireManager, async (req: AuthedRequest, res, nex
 jiraRouter.post("/test", async (req: AuthedRequest, res, next) => {
   try {
     const config = await prisma.jiraConfig.findUnique({ where: { companyId: req.user!.companyId } });
-    if (!config) throw httpError(404, "No Jira config for this company");
+    if (!config) throw httpError(404, "JIRA_NOT_CONFIGURED");
+    req.log.info({ companyId: req.user!.companyId, userId: req.user!.id }, "testing jira connection");
     const me = await jiraFetch<{ displayName: string; emailAddress: string }>(config, "/rest/api/3/myself");
+    req.log.info({ companyId: req.user!.companyId, connectedAs: me.displayName }, "jira connection test succeeded");
     res.json({ ok: true, connectedAs: me.displayName, email: me.emailAddress });
   } catch (e) {
     next(e);
@@ -85,7 +87,7 @@ jiraRouter.post("/test", async (req: AuthedRequest, res, next) => {
 
 async function companyConfig(companyId: string) {
   const config = await prisma.jiraConfig.findUnique({ where: { companyId } });
-  if (!config) throw httpError(404, "No Jira config for this company");
+  if (!config) throw httpError(404, "JIRA_NOT_CONFIGURED");
   return config;
 }
 
@@ -93,10 +95,12 @@ jiraRouter.get("/discover/projects", async (req: AuthedRequest, res, next) => {
   try {
     const q = typeof req.query.q === "string" ? req.query.q : "";
     const config = await companyConfig(req.user!.companyId);
+    req.log.info({ companyId: req.user!.companyId, query: q || undefined }, "discovering jira projects");
     const data = await jiraFetch<{ values: Array<{ key: string; name: string; id: string }> }>(
       config,
       `/rest/api/3/project/search?maxResults=50&orderBy=name${q ? `&query=${encodeURIComponent(q)}` : ""}`,
     );
+    req.log.info({ companyId: req.user!.companyId, resultCount: data.values.length }, "jira projects discovered");
     res.json(data.values.map((p) => ({ key: p.key, name: p.name, id: p.id })));
   } catch (e) {
     next(e);
@@ -106,12 +110,14 @@ jiraRouter.get("/discover/projects", async (req: AuthedRequest, res, next) => {
 jiraRouter.get("/discover/issue-types", async (req: AuthedRequest, res, next) => {
   try {
     const projectKey = typeof req.query.projectKey === "string" ? req.query.projectKey : undefined;
-    if (!projectKey) throw httpError(400, "projectKey required");
+    if (!projectKey) throw httpError(400, "JIRA_PROJECT_KEY_REQUIRED");
     const config = await companyConfig(req.user!.companyId);
+    req.log.info({ companyId: req.user!.companyId, projectKey }, "discovering jira issue types");
     const project = await jiraFetch<{ issueTypes?: Array<{ name: string; subtask: boolean }> }>(
       config,
       `/rest/api/3/project/${encodeURIComponent(projectKey)}`,
     );
+    req.log.info({ companyId: req.user!.companyId, projectKey, count: (project.issueTypes ?? []).length }, "jira issue types discovered");
     res.json((project.issueTypes ?? []).filter((t) => !t.subtask).map((t) => t.name));
   } catch (e) {
     next(e);
@@ -121,7 +127,7 @@ jiraRouter.get("/discover/issue-types", async (req: AuthedRequest, res, next) =>
 jiraRouter.get("/discover/epics", async (req: AuthedRequest, res, next) => {
   try {
     const projectKey = typeof req.query.projectKey === "string" ? req.query.projectKey : undefined;
-    if (!projectKey) throw httpError(400, "projectKey required");
+    if (!projectKey) throw httpError(400, "JIRA_PROJECT_KEY_REQUIRED");
     const q = typeof req.query.q === "string" ? req.query.q : "";
     const config = await companyConfig(req.user!.companyId);
     const sanitized = q.replace(/"/g, "");
@@ -132,11 +138,13 @@ jiraRouter.get("/discover/epics", async (req: AuthedRequest, res, next) => {
         : ` AND summary ~ "${sanitized}"`
       : "";
     const jql = `project = "${projectKey}" AND issuetype = Epic${filter} ORDER BY created DESC`;
+    req.log.info({ companyId: req.user!.companyId, projectKey, query: q || undefined }, "discovering jira epics");
     const data = await jiraFetch<{ issues: Array<{ key: string; fields: { summary: string; status?: { name: string } } }> }>(
       config,
       `/rest/api/3/search/jql`,
       { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jql, fields: ["summary", "status"], maxResults: 50 }) },
     );
+    req.log.info({ companyId: req.user!.companyId, projectKey, resultCount: data.issues.length }, "jira epics discovered");
     res.json(
       data.issues.map((i) => ({
         key: i.key,
@@ -178,7 +186,7 @@ jiraRouter.get("/projects/:projectId/binding", async (req: AuthedRequest, res, n
         jiraParentEpicSummary: true,
       },
     });
-    if (!project) throw httpError(404, "Project not found");
+    if (!project) throw httpError(404, "PROJECT_NOT_FOUND");
     res.json(project);
   } catch (e) {
     next(e);
@@ -192,7 +200,7 @@ jiraRouter.put("/projects/:projectId/binding", requireManager, async (req: Authe
       where: projectWhere(req.user!, { id: req.params.projectId }),
       select: { id: true },
     });
-    if (!owned) throw httpError(404, "Project not found");
+    if (!owned) throw httpError(404, "PROJECT_NOT_FOUND");
     const project = await prisma.project.update({
       where: { id: req.params.projectId },
       data,
@@ -229,7 +237,7 @@ async function assertAccessToExecution(req: AuthedRequest, id: string) {
     where: executionWhere(req.user!, { id }),
     select: { id: true },
   });
-  if (!allowed) throw httpError(404, "Execution not found");
+  if (!allowed) throw httpError(404, "EXECUTION_NOT_FOUND");
 }
 
 jiraRouter.post("/executions/:id/create-bug", requireWrite, async (req: AuthedRequest, res, next) => {
@@ -287,6 +295,7 @@ jiraRouter.post("/executions/:id/unlink", requireWrite, async (req: AuthedReques
       where: { id: req.params.id },
       data: { jiraIssueKey: null, jiraIssueUrl: null },
     });
+    req.log.info({ executionId: req.params.id, userId: req.user!.id }, "jira issue unlinked");
     res.json(updated);
   } catch (e) {
     next(e);

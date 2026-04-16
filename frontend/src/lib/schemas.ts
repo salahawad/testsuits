@@ -17,16 +17,30 @@ const COMMON_PASSWORDS = new Set<string>([
 
 export const passwordPolicy = z
   .string()
-  .min(10, "Password must be at least 10 characters")
-  .max(128, "Password must be at most 128 characters")
-  .refine((p) => !COMMON_PASSWORDS.has(p.toLowerCase()), "That password is too common. Pick a less obvious one.");
+  .min(10)
+  .max(128);
+
+export const passwordPolicyWithMessages = (t: (key: string) => string) => z
+  .string()
+  .min(10, t("validation.password_min"))
+  .max(128, t("validation.password_max"))
+  .refine((p) => !COMMON_PASSWORDS.has(p.toLowerCase()), t("validation.password_common"));
 
 // Login passwords aren't re-validated for strength — legacy short passwords
 // from pre-policy accounts should still work.
-export const loginPassword = z.string().min(1, "Password is required");
+export const loginPassword = z.string().min(1);
 
-export const emailField = z.string().min(1, "Email is required").email("Enter a valid email");
+export const loginPasswordWithMessages = (t: (key: string) => string) =>
+  z.string().min(1, t("validation.password_required"));
+
+export const emailField = z.string().min(1).email();
+
+export const emailFieldWithMessages = (t: (key: string) => string) =>
+  z.string().min(1, t("validation.email_required")).email(t("validation.email_invalid"));
+
 export const nonEmpty = (label: string) => z.string().min(1, `${label} is required`);
+
+export const nonEmptyWithMessage = (msg: string) => z.string().min(1, msg);
 export const optionalString = z.string().optional();
 
 export const roleEnum = z.enum(["ADMIN", "MANAGER", "TESTER", "VIEWER"]);

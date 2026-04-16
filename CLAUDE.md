@@ -39,7 +39,8 @@ Supported languages: **English (`en`)** and **French (`fr`)**. Both must stay in
 
 ### Frontend
 
-- All user-facing strings go through `useTranslation()` → `t('key.path')`. No hard-coded English.
+- **Zero hardcoded English anywhere in `.tsx` files** — all user-facing strings go through `useTranslation()` → `t('key.path')`. This includes error messages, warning messages, success/info messages, toast notifications, validation hints, confirmation dialogs, empty-state text, tooltips, and placeholder text. No exceptions.
+- **All messages from the API** must be translated on the frontend: display `t('errors.' + key)` / `t('warnings.' + key)` / `t('messages.' + key)`, never the raw string from the response body.
 - When you add or change a string:
   1. Add the key to [frontend/src/i18n/en.json](frontend/src/i18n/en.json).
   2. Add the **same key** with a French translation to [frontend/src/i18n/fr.json](frontend/src/i18n/fr.json).
@@ -50,13 +51,21 @@ Supported languages: **English (`en`)** and **French (`fr`)**. Both must stay in
 
 ### Backend
 
-- API error messages that reach the user should prefer stable machine keys, not prose. The frontend translates them.
-- Currently the API returns plain English for system/validation errors (acceptable because they are usually developer-facing). If you add a user-visible domain error, emit a stable `code` field alongside `error` so the frontend can translate it.
+- **Never return hardcoded English messages from the API.** Every message in an API response that could reach the frontend — errors, warnings, info/success messages — must use a stable machine key (e.g. `"error": "AUTH_INVALID_CREDENTIALS"`, `"message": "RUN_CLOSED_SUCCESS"`) — never prose like `"Invalid email or password"` or `"Run closed successfully"`. The frontend is responsible for translating these keys via `t()`.
+- When adding or changing any API message (error, warning, or info):
+  1. Choose a stable, descriptive key (e.g. `AUTH_SESSION_EXPIRED`, `PROJECT_NOT_FOUND`, `RUN_CLOSE_SUCCESS`, `INVITE_SENT`).
+  2. Return it in the response field: `res.status(xxx).json({ error: 'AUTH_SESSION_EXPIRED' })` or `res.json({ message: 'INVITE_SENT' })`.
+  3. Add the matching translation to **both** `en.json` and `fr.json` under the appropriate namespace (`errors.*`, `warnings.*`, or `messages.*`).
+  4. The frontend must display these via `t('errors.' + key)` / `t('warnings.' + key)` / `t('messages.' + key)` — never render the raw API string.
+- This applies to validation errors, auth errors, business-logic errors, success confirmations, info notices, warnings, and any other response the user might see. No exceptions.
 
 ### Checklist before marking a task done
 
 - [ ] Every new user-visible string is in **both** `en.json` and `fr.json`.
-- [ ] No hard-coded English/French in `.tsx` files.
+- [ ] No hard-coded English/French in `.tsx` files — including errors, warnings, success/info messages, toasts, validation text, empty states, and tooltips.
+- [ ] Every backend response message (error, warning, info, success) uses a stable machine key, not English prose.
+- [ ] Every backend message key has a matching entry in both `en.json` and `fr.json` (`errors.*`, `warnings.*`, or `messages.*`).
+- [ ] The frontend displays all API messages via `t()` with the appropriate namespace, never the raw response string.
 - [ ] The key structures in both JSON files are identical (same paths, same types).
 - [ ] Pluralization and variable substitution use i18next features, not string concatenation.
 

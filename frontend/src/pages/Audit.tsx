@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { Download, FileSearch } from "lucide-react";
 import { api } from "../lib/api";
+import { logger } from "../lib/logger";
 
 type Row = {
   id: string;
@@ -50,7 +51,8 @@ export function Audit() {
         a.download = "audit.csv";
         a.click();
         URL.revokeObjectURL(url);
-      });
+      })
+      .catch((err) => { logger.error("audit CSV download failed", { err }); });
   }
 
   return (
@@ -73,7 +75,7 @@ export function Audit() {
           <label className="label">{t("audit.action_filter")}</label>
           <input
             className="input"
-            placeholder="e.g. CASE_UPDATED"
+            placeholder={t("audit.action_placeholder")}
             value={filters.action}
             onChange={(e) => setFilters({ ...filters, action: e.target.value })}
           />

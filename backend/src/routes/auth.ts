@@ -34,7 +34,7 @@ function newRawToken() {
 const limiterCommon = {
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Too many requests. Please try again later." },
+  message: { error: "RATE_LIMIT_EXCEEDED" },
 };
 const loginLimiter = rateLimit({ windowMs: 60_000, max: 10, ...limiterCommon });
 const signupLimiter = rateLimit({ windowMs: 60 * 60_000, max: 5, ...limiterCommon });
@@ -107,14 +107,20 @@ authRouter.post("/login", loginLimiter, async (req, res, next) => {
 
     if (!user) {
       logger.warn({ email, reason: "user_not_found" }, "login failed");
-      throw httpError(401, "Invalid credentials");
+      throw httpError(401, "INVALID_CREDENTIALS");
+    }
+
+    // --- Manager-imposed lock (permanent until unlocked) ---
+    if (user.isLocked) {
+      logger.warn({ email, userId: user.id, reason: "account_locked_by_admin" }, "login rejected (locked by admin)");
+      throw httpError(423, "ACCOUNT_LOCKED");
     }
 
     // --- Per-account lockout ---
     if (user.lockedUntil && user.lockedUntil > new Date()) {
       const minutesLeft = Math.ceil((user.lockedUntil.getTime() - Date.now()) / 60_000);
       logger.warn({ email, userId: user.id, reason: "account_locked", minutesLeft }, "login rejected (locked)");
-      throw httpError(423, `Account is temporarily locked. Try again in ${minutesLeft} minute${minutesLeft === 1 ? "" : "s"}.`);
+      throw httpError(423, "ACCOUNT_TEMPORARILY_LOCKED");
     }
 
     if (!ok) {
@@ -131,16 +137,17 @@ authRouter.post("/login", loginLimiter, async (req, res, next) => {
 
       if (justLocked) {
         logger.warn({ userId: user.id, email, lockoutMinutes: LOCKOUT_DURATION_MS / 60_000 }, "account locked after repeated failures");
+        // Fire-and-forget — lockout is already applied; don't block the response on email delivery.
         sendEmail({
           to: user.email,
           subject: "Your TestSuits account has been temporarily locked",
           text: `Hi ${user.name},\n\nWe detected ${MAX_LOGIN_ATTEMPTS} consecutive failed login attempts on your account. As a precaution, your account has been locked for 15 minutes.\n\nIf this wasn't you, we recommend resetting your password:\n${appUrl}/forgot\n\nIf it was you, simply wait 15 minutes and try again.\n`,
           html: `<p>Hi ${user.name},</p><p>We detected <strong>${MAX_LOGIN_ATTEMPTS} consecutive failed login attempts</strong> on your account. As a precaution, your account has been locked for 15 minutes.</p><p>If this wasn't you, we recommend <a href="${appUrl}/forgot">resetting your password</a>.</p><p>If it was you, simply wait 15 minutes and try again.</p>`,
-        });
-        throw httpError(423, "Account is temporarily locked due to too many failed attempts. Check your email for details.");
+        }).catch((err) => logger.error({ err, userId: user.id }, "failed to send lockout notification email"));
+        throw httpError(423, "ACCOUNT_TEMPORARILY_LOCKED");
       }
 
-      throw httpError(401, "Invalid credentials");
+      throw httpError(401, "INVALID_CREDENTIALS");
     }
 
     // Successful login — reset lockout state.
@@ -154,7 +161,7 @@ authRouter.post("/login", loginLimiter, async (req, res, next) => {
     // Gate: email not verified yet.
     if (!user.emailVerifiedAt) {
       logger.warn({ userId: user.id, email: user.email }, "login blocked — email not verified");
-      return res.status(403).json({ error: "Please verify your email address before signing in.", code: "EMAIL_NOT_VERIFIED" });
+      return res.status(403).json({ error: "EMAIL_NOT_VERIFIED" });
     }
 
     const userPayload = { id: user.id, email: user.email, role: user.role, companyId: user.companyId } as const;
@@ -211,7 +218,7 @@ authRouter.post("/signup", signupLimiter, async (req, res, next) => {
   try {
     const { email, password, name, companyName } = signupSchema.parse(req.body);
     const existing = await prisma.user.findUnique({ where: { email } });
-    if (existing) throw httpError(409, "Email already in use");
+    if (existing) throw httpError(409, "EMAIL_ALREADY_IN_USE");
 
     const baseSlug = slugify(companyName);
     let slug = baseSlug;
@@ -297,7 +304,7 @@ authRouter.post("/reset", resetLimiter, async (req, res, next) => {
     const { token, password } = resetSchema.parse(req.body);
     const row = await prisma.passwordResetToken.findUnique({ where: { tokenHash: hashToken(token) } });
     if (!row || row.consumedAt || row.expiresAt < new Date()) {
-      throw httpError(400, "Reset link is invalid or expired");
+      throw httpError(400, "RESET_LINK_INVALID");
     }
     const passwordHash = await bcrypt.hash(password, 10);
     const now = new Date();
@@ -337,7 +344,7 @@ authRouter.post("/verify-email", verifyEmailLimiter, async (req, res, next) => {
       include: { user: { include: { company: true } } },
     });
     if (!row || row.consumedAt || row.expiresAt < new Date()) {
-      throw httpError(400, "Verification link is invalid or expired");
+      throw httpError(400, "VERIFICATION_LINK_INVALID");
     }
     const now = new Date();
     await prisma.$transaction([
@@ -415,7 +422,7 @@ authRouter.post("/invite", inviteLimiter, requireAuth, requireManager, async (re
     const { email, name, role } = inviteSchema.parse(req.body);
     // Refuse if this email is already a user in ANY company — email is a global unique in User.
     const existingUser = await prisma.user.findUnique({ where: { email } });
-    if (existingUser) throw httpError(409, "A user with that email already exists");
+    if (existingUser) throw httpError(409, "EMAIL_ALREADY_IN_USE");
 
     // Invalidate previous un-consumed invites for the same email within this company.
     await prisma.inviteToken.deleteMany({
@@ -458,7 +465,7 @@ authRouter.get("/invite/:token", invitePreviewLimiter, async (req, res, next) =>
       include: { company: true },
     });
     if (!row || row.acceptedAt || row.expiresAt < new Date()) {
-      throw httpError(404, "Invite is invalid or expired");
+      throw httpError(404, "INVITE_INVALID");
     }
     res.json({
       email: row.email,
@@ -484,11 +491,11 @@ authRouter.post("/accept-invite", acceptInviteLimiter, async (req, res, next) =>
       include: { company: true },
     });
     if (!row || row.acceptedAt || row.expiresAt < new Date()) {
-      throw httpError(400, "Invite is invalid or expired");
+      throw httpError(400, "INVITE_INVALID");
     }
     // Race-safety: someone may have signed up with this email in the meantime.
     const existingUser = await prisma.user.findUnique({ where: { email: row.email } });
-    if (existingUser) throw httpError(409, "A user with that email already exists");
+    if (existingUser) throw httpError(409, "EMAIL_ALREADY_IN_USE");
 
     const passwordHash = await bcrypt.hash(password, 10);
     const { user } = await prisma.$transaction(async (tx) => {

@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { ChangeEvent, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Upload, Download, Trash2, ExternalLink, Bug, FileDown, Link as LinkIcon } from "lucide-react";
+import { Upload, Download, Trash2, ExternalLink, Bug, FileDown, Link as LinkIcon, Archive, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../lib/api";
 import { execStatusColors, runStatusColors } from "../lib/status";
@@ -11,6 +11,9 @@ import { Comments } from "../components/Comments";
 import { ActivityFeed } from "../components/ActivityFeed";
 import { PageLoader, Spinner } from "../components/Spinner";
 import { RichEditor } from "../components/RichEditor";
+import { useAuth } from "../lib/auth";
+import { useConfirm } from "../components/ui/ConfirmDialog";
+import { logger } from "../lib/logger";
 
 const STATUSES = ["PENDING", "PASSED", "FAILED", "BLOCKED", "SKIPPED"] as const;
 
@@ -18,6 +21,9 @@ export function RunDetail() {
   const { t } = useTranslation();
   const { id } = useParams();
   const qc = useQueryClient();
+  const user = useAuth((s) => s.user);
+  const isManager = user?.role === "MANAGER" || user?.role === "ADMIN";
+  const confirmDialog = useConfirm();
   const [selected, setSelected] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
   const [failureReason, setFailureReason] = useState("");
@@ -65,6 +71,7 @@ export function RunDetail() {
     mutationFn: async (patch: Record<string, unknown>) =>
       (await api.patch(`/executions/${selected}`, patch)).data,
     onSuccess: () => {
+      logger.info("execution updated", { executionId: selected });
       qc.invalidateQueries({ queryKey: ["run", id] });
       qc.invalidateQueries({ queryKey: ["execution", selected] });
       toast.success(t("common.saved"));
@@ -74,10 +81,28 @@ export function RunDetail() {
   const updateRun = useMutation({
     mutationFn: async (status: string) => (await api.patch(`/runs/${id}`, { status })).data,
     onSuccess: () => {
+      logger.info("run status changed", { runId: id });
       qc.invalidateQueries({ queryKey: ["run", id] });
       toast.success(t("common.saved"));
     },
   });
+
+  const archiveRun = useMutation({
+    mutationFn: async (archive: boolean) =>
+      (await api.patch(`/runs/${id}`, { status: archive ? "ARCHIVED" : "COMPLETED" })).data,
+    onSuccess: (_data, archive) => {
+      qc.invalidateQueries({ queryKey: ["run", id] });
+      const msg = archive ? t("runs.archived_toast") : t("runs.unarchived_toast");
+      toast.success(msg);
+      logger.info(archive ? "run archived" : "run unarchived", { runId: id });
+    },
+  });
+
+  async function onArchive() {
+    if (await confirmDialog({ title: t("runs.archive_confirm"), tone: "warning" })) {
+      archiveRun.mutate(true);
+    }
+  }
 
   const upload = useMutation({
     mutationFn: async (file: File) => {
@@ -87,6 +112,7 @@ export function RunDetail() {
       return (await api.post("/attachments", form)).data;
     },
     onSuccess: () => {
+      logger.info("evidence uploaded", { runId: id });
       qc.invalidateQueries({ queryKey: ["execution", selected] });
       toast.success(t("runs.evidence_uploaded"));
     },
@@ -94,7 +120,8 @@ export function RunDetail() {
 
   const deleteAttachment = useMutation({
     mutationFn: async (attId: string) => api.delete(`/attachments/${attId}`),
-    onSuccess: () => {
+    onSuccess: (_data, attachmentId) => {
+      logger.info("evidence deleted", { attachmentId });
       qc.invalidateQueries({ queryKey: ["execution", selected] });
       toast.success(t("common.deleted"));
     },
@@ -103,17 +130,22 @@ export function RunDetail() {
   const createBug = useMutation({
     mutationFn: async () => (await api.post(`/jira/executions/${selected}/create-bug`)).data,
     onSuccess: () => {
+      logger.info("jira bug created", { executionId: selected });
       setJiraErr(null);
       qc.invalidateQueries({ queryKey: ["run", id] });
       qc.invalidateQueries({ queryKey: ["execution", selected] });
       toast.success(t("jira.bug_created"));
     },
-    onError: (e: any) => setJiraErr(e.response?.data?.error ?? "Jira bug creation failed"),
+    onError: (e: any) => {
+      logger.warn("jira bug creation failed", { err: e });
+      setJiraErr(e.response?.data?.error ?? t("common.create_failed"));
+    },
   });
 
   const linkBug = useMutation({
     mutationFn: async () => (await api.post(`/jira/executions/${selected}/link`, { jiraIssueKey: linkKey })).data,
     onSuccess: () => {
+      logger.info("jira issue linked", { executionId: selected });
       qc.invalidateQueries({ queryKey: ["execution", selected] });
       qc.invalidateQueries({ queryKey: ["run", id] });
       toast.success(t("jira.linked"));
@@ -123,6 +155,7 @@ export function RunDetail() {
   const unlinkBug = useMutation({
     mutationFn: async () => (await api.post(`/jira/executions/${selected}/unlink`)).data,
     onSuccess: () => {
+      logger.info("jira issue unlinked", { executionId: selected });
       qc.invalidateQueries({ queryKey: ["execution", selected] });
       qc.invalidateQueries({ queryKey: ["run", id] });
       toast.success(t("jira.unlinked"));
@@ -130,8 +163,12 @@ export function RunDetail() {
   });
 
   async function onDownload(attId: string) {
-    const { data } = await api.get(`/attachments/${attId}/download`);
-    window.open(data.url, "_blank");
+    try {
+      const { data } = await api.get(`/attachments/${attId}/download`);
+      window.open(data.url, "_blank");
+    } catch (err) {
+      logger.error("attachment download failed", { attachmentId: attId, err });
+    }
   }
 
   function onFile(e: ChangeEvent<HTMLInputElement>) {
@@ -161,7 +198,8 @@ export function RunDetail() {
         a.download = `run-${id}.csv`;
         a.click();
         URL.revokeObjectURL(url);
-      });
+      })
+      .catch((err) => { logger.error("CSV export failed", { err }); });
   }
 
   if (isLoading) return <PageLoader />;
@@ -183,7 +221,7 @@ export function RunDetail() {
             <span>{run.project.name}</span>
             {run.milestone && <Badge tone="violet">{run.milestone.name}</Badge>}
             {run.environment && <Badge tone="neutral">{run.environment}</Badge>}
-            {run.dueDate && <span>due {new Date(run.dueDate).toLocaleDateString()}</span>}
+            {run.dueDate && <span>{t("runs.due_on", { date: new Date(run.dueDate).toLocaleDateString() })}</span>}
           </div>
           <h1 className="text-2xl font-bold">{run.name}</h1>
           {run.description && <p className="text-sm text-slate-500 mt-1">{run.description}</p>}
@@ -191,7 +229,7 @@ export function RunDetail() {
         <div className="flex items-center gap-2">
           <span className={`badge ${runStatusColors[run.status]}`}>{run.status.replace("_", " ")}</span>
           <button className="btn-secondary" onClick={exportCsv}><FileDown size={14} /> CSV</button>
-          {run.status !== "COMPLETED" && (
+          {run.status !== "COMPLETED" && run.status !== "ARCHIVED" && (
             <button
               className="btn-secondary"
               onClick={() => updateRun.mutate("COMPLETED")}
@@ -201,12 +239,32 @@ export function RunDetail() {
               {t("runs.mark_completed")}
             </button>
           )}
+          {isManager && run.status !== "ARCHIVED" && (
+            <button
+              className="btn-secondary"
+              onClick={onArchive}
+              disabled={archiveRun.isPending}
+            >
+              {archiveRun.isPending && <Spinner size={14} className="text-slate-600" />}
+              <Archive size={14} /> {t("runs.archive")}
+            </button>
+          )}
+          {isManager && run.status === "ARCHIVED" && (
+            <button
+              className="btn-secondary"
+              onClick={() => archiveRun.mutate(false)}
+              disabled={archiveRun.isPending}
+            >
+              {archiveRun.isPending && <Spinner size={14} className="text-slate-600" />}
+              <RotateCcw size={14} /> {t("runs.unarchive")}
+            </button>
+          )}
         </div>
       </header>
 
       <div className="card p-5">
         <div className="flex items-center justify-between text-sm mb-2">
-          <span>{done} of {run.executions.length} executed</span>
+          <span>{t("runs.executed_of", { done, total: run.executions.length })}</span>
           <span>{progress}%</span>
         </div>
         <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded overflow-hidden">
@@ -248,7 +306,7 @@ export function RunDetail() {
 
         <div className="space-y-4">
           {!execution ? (
-            <div className="card p-10 text-center text-slate-500">Select a test case to execute.</div>
+            <div className="card p-10 text-center text-slate-500">{t("runs.select_case")}</div>
           ) : (
             <>
               <div className="card p-5">
@@ -419,7 +477,7 @@ export function RunDetail() {
                       <li key={a.id} className="flex items-center justify-between py-2">
                         <div>
                           <div className="text-sm font-medium">{a.filename}</div>
-                          <div className="text-xs text-slate-500">{(a.size / 1024).toFixed(1)} KB · by {a.uploadedBy.name}</div>
+                          <div className="text-xs text-slate-500">{t("runs.file_info", { size: (a.size / 1024).toFixed(1), name: a.uploadedBy.name })}</div>
                         </div>
                         <div className="flex gap-2">
                           <button className="btn-secondary" onClick={() => onDownload(a.id)}><Download size={14} /></button>

@@ -16,7 +16,7 @@ usersRouter.get("/", async (req: AuthedRequest, res, next) => {
   try {
     const users = await prisma.user.findMany({
       where: userListWhere(req.user!),
-      select: { id: true, name: true, email: true, role: true, createdAt: true },
+      select: { id: true, name: true, email: true, role: true, isLocked: true, createdAt: true },
       orderBy: [{ role: "asc" }, { name: "asc" }],
     });
     res.json(users);
@@ -31,7 +31,7 @@ usersRouter.get("/me", async (req: AuthedRequest, res, next) => {
       where: { id: req.user!.id },
       include: { company: true },
     });
-    if (!me) throw httpError(404, "User not found");
+    if (!me) throw httpError(404, "USER_NOT_FOUND");
     res.json({
       id: me.id,
       name: me.name,
@@ -78,11 +78,11 @@ usersRouter.put("/me/password", async (req: AuthedRequest, res, next) => {
   try {
     const { currentPassword, newPassword } = changePasswordSchema.parse(req.body);
     const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
-    if (!user) throw httpError(404, "User not found");
+    if (!user) throw httpError(404, "USER_NOT_FOUND");
     const ok = await bcrypt.compare(currentPassword, user.passwordHash);
     if (!ok) {
       logger.warn({ userId: user.id }, "password change failed: wrong current password");
-      throw httpError(400, "Current password is incorrect");
+      throw httpError(400, "INCORRECT_PASSWORD");
     }
     const passwordHash = await bcrypt.hash(newPassword, 10);
     await prisma.$transaction([
@@ -109,8 +109,8 @@ const avatarUpload = multer({
 
 usersRouter.post("/me/avatar", avatarUpload.single("file"), async (req: AuthedRequest, res, next) => {
   try {
-    if (!req.file) throw httpError(400, "No file uploaded");
-    if (!AVATAR_MIME.has(req.file.mimetype)) throw httpError(400, "Only JPEG, PNG, WebP, and GIF are allowed");
+    if (!req.file) throw httpError(400, "NO_FILE_UPLOADED");
+    if (!AVATAR_MIME.has(req.file.mimetype)) throw httpError(400, "INVALID_FILE_TYPE");
 
     const ext = req.file.originalname.split(".").pop() ?? "jpg";
     const storageKey = `avatars/${req.user!.id}/${randomUUID()}.${ext}`;
@@ -119,7 +119,7 @@ usersRouter.post("/me/avatar", avatarUpload.single("file"), async (req: AuthedRe
     // Remove old avatar from storage if it exists.
     const prev = await prisma.user.findUnique({ where: { id: req.user!.id }, select: { avatarKey: true } });
     if (prev?.avatarKey) {
-      await deleteObject(prev.avatarKey).catch(() => {});
+      await deleteObject(prev.avatarKey).catch((err) => logger.warn({ err, userId: req.user!.id, key: prev.avatarKey }, "failed to delete old avatar from S3"));
     }
 
     await prisma.user.update({ where: { id: req.user!.id }, data: { avatarKey: storageKey } });
@@ -134,7 +134,7 @@ usersRouter.delete("/me/avatar", async (req: AuthedRequest, res, next) => {
   try {
     const user = await prisma.user.findUnique({ where: { id: req.user!.id }, select: { avatarKey: true } });
     if (user?.avatarKey) {
-      await deleteObject(user.avatarKey).catch(() => {});
+      await deleteObject(user.avatarKey).catch((err) => logger.warn({ err, userId: req.user!.id, key: user.avatarKey }, "failed to delete avatar from S3"));
       await prisma.user.update({ where: { id: req.user!.id }, data: { avatarKey: null } });
       logger.info({ userId: req.user!.id }, "avatar removed");
     }
@@ -151,7 +151,7 @@ usersRouter.get("/:id/avatar", async (req: AuthedRequest, res, next) => {
       select: { avatarKey: true, companyId: true },
     });
     if (!target || target.companyId !== req.user!.companyId || !target.avatarKey) {
-      throw httpError(404, "Avatar not found");
+      throw httpError(404, "AVATAR_NOT_FOUND");
     }
     const url = await getDownloadUrl(target.avatarKey);
     res.redirect(url);
@@ -174,7 +174,7 @@ usersRouter.post("/", requireManager, async (req: AuthedRequest, res, next) => {
   try {
     const data = createSchema.parse(req.body);
     const existing = await prisma.user.findUnique({ where: { email: data.email } });
-    if (existing) throw httpError(409, "Email already in use");
+    if (existing) throw httpError(409, "EMAIL_ALREADY_IN_USE");
     const user = await prisma.user.create({
       data: {
         email: data.email,
@@ -205,7 +205,7 @@ usersRouter.patch("/:id", requireManager, async (req: AuthedRequest, res, next) 
   try {
     const target = await prisma.user.findUnique({ where: { id: req.params.id } });
     if (!target || target.companyId !== req.user!.companyId) {
-      throw httpError(404, "User not found");
+      throw httpError(404, "USER_NOT_FOUND");
     }
     const data = updateSchema.parse(req.body);
     const update: Record<string, unknown> = {};
@@ -224,13 +224,36 @@ usersRouter.patch("/:id", requireManager, async (req: AuthedRequest, res, next) 
   }
 });
 
+usersRouter.patch("/:id/lock", requireManager, async (req: AuthedRequest, res, next) => {
+  try {
+    const target = await prisma.user.findUnique({ where: { id: req.params.id } });
+    if (!target || target.companyId !== req.user!.companyId) {
+      throw httpError(404, "USER_NOT_FOUND");
+    }
+    if (target.id === req.user!.id) throw httpError(400, "CANNOT_LOCK_SELF");
+    const lock = z.object({ locked: z.boolean() }).parse(req.body);
+    const user = await prisma.user.update({
+      where: { id: req.params.id },
+      data: { isLocked: lock.locked },
+      select: { id: true, name: true, email: true, role: true, isLocked: true, createdAt: true },
+    });
+    logger.info(
+      { actorId: req.user!.id, userId: user.id, locked: lock.locked, companyId: req.user!.companyId },
+      lock.locked ? "user locked" : "user unlocked",
+    );
+    res.json(user);
+  } catch (e) {
+    next(e);
+  }
+});
+
 usersRouter.delete("/:id", requireManager, async (req: AuthedRequest, res, next) => {
   try {
     const target = await prisma.user.findUnique({ where: { id: req.params.id } });
     if (!target || target.companyId !== req.user!.companyId) {
-      throw httpError(404, "User not found");
+      throw httpError(404, "USER_NOT_FOUND");
     }
-    if (target.id === req.user!.id) throw httpError(400, "Cannot delete yourself");
+    if (target.id === req.user!.id) throw httpError(400, "CANNOT_DELETE_SELF");
     await prisma.user.delete({ where: { id: req.params.id } });
     logger.info({ deletedBy: req.user!.id, userId: req.params.id }, "user deleted");
     res.status(204).end();

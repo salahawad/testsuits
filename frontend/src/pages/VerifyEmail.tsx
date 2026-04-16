@@ -28,6 +28,7 @@ export function VerifyEmail() {
       })
       .catch((e) => {
         if (cancelled) return;
+        logger.warn("email verification failed", { err: e });
         setError(apiErrorMessage(e, t("verify_email.invalid")));
       });
     return () => { cancelled = true; };

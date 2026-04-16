@@ -1,27 +1,18 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
 import { api } from "../lib/api";
+import { logger } from "../lib/logger";
 import { Field } from "../components/Field";
 import { useZodForm } from "../lib/useZodForm";
-import { nonEmpty } from "../lib/schemas";
 import { apiErrorMessage } from "../lib/apiError";
 import { Badge } from "../components/ui/Badge";
 import { useAuth } from "../lib/auth";
 
-const schema = z.object({
-  key: z
-    .string()
-    .min(1, "Key is required")
-    .max(16, "Key is too long")
-    .regex(/^[A-Z0-9_-]+$/i, "Letters, numbers, - and _ only"),
-  name: nonEmpty("Name"),
-  description: z.string().optional(),
-});
-type Values = z.infer<typeof schema>;
+type Values = { key: string; name: string; description?: string };
 
 export function Projects() {
   const { t } = useTranslation();
@@ -29,6 +20,16 @@ export function Projects() {
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const schema = useMemo(() => z.object({
+    key: z
+      .string()
+      .min(1, t("validation.key_required"))
+      .max(16, t("validation.key_too_long"))
+      .regex(/^[A-Z0-9_-]+$/i, t("validation.key_format")),
+    name: z.string().min(1, t("validation.name_required")),
+    description: z.string().optional(),
+  }), [t]);
 
   const form = useZodForm<Values>(schema, {
     defaultValues: { key: "", name: "", description: "" },
@@ -46,13 +47,17 @@ export function Projects() {
         { key: values.key.toUpperCase(), name: values.name, description: values.description || null },
         { silent: true },
       )).data,
-    onSuccess: () => {
+    onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["projects"] });
       setOpen(false);
       form.reset({ key: "", name: "", description: "" });
       setSubmitError(null);
+      logger.info("project created", { projectId: data.id });
     },
-    onError: (e: unknown) => setSubmitError(apiErrorMessage(e, "Create failed")),
+    onError: (e: unknown) => {
+      logger.warn("project creation failed", { err: e });
+      setSubmitError(apiErrorMessage(e, t("common.something_went_wrong")));
+    },
   });
 
   function closeForm() {
@@ -81,7 +86,7 @@ export function Projects() {
             <Field name="key" label={t("projects.key")} error={form.formState.errors.key?.message}>
               <input
                 className="input uppercase"
-                placeholder="AUTH"
+                placeholder={t("projects.key_placeholder")}
                 maxLength={16}
                 {...form.register("key", {
                   onChange: (e) => {
