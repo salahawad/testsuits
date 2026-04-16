@@ -103,6 +103,7 @@
     "WEBHOOK_NOT_FOUND": "Webhook not found.",
     "SHARED_STEP_NOT_FOUND": "Shared step not found.",
     "MILESTONE_NOT_FOUND": "Milestone not found.",
+    "MILESTONE_NAME_TAKEN": "A milestone with that name already exists in this project.",
     "REQUIREMENT_NOT_FOUND": "Requirement not found.",
     "EXTERNAL_REF_DUPLICATE": "External reference already exists in this project.",
     "CASE_NOT_FOUND_IN_PROJECT": "Case not found in this project.",
@@ -267,7 +268,7 @@
     "run_name": "Run name",
     "milestone": "Milestone",
     "environment": "Environment",
-    "environment_placeholder": "Chrome 120 / Prod",
+    "environment_placeholder": "dev / test / prod",
     "due_date": "Due date",
     "default_assignee": "Default assignee",
     "include_suites": "Include suites",
@@ -466,7 +467,9 @@
     "lock_confirm": "Lock this user? They will be unable to sign in or use the app.",
     "unlock_confirm": "Unlock this user? They will be able to sign in again.",
     "user_locked": "User locked.",
-    "user_unlocked": "User unlocked."
+    "user_unlocked": "User unlocked.",
+    "last_login": "Last login",
+    "never_logged_in": "Never logged in"
   },
   "theme": {
     "light": "Light",
@@ -574,7 +577,20 @@
     "project": "Project",
     "entity": "Entity",
     "rows_count": "{{count}} rows",
-    "action_placeholder": "e.g. CASE_UPDATED"
+    "action_placeholder": "e.g. CASE_UPDATED",
+    "details": "Details",
+    "detail_run_created": "\"{{name}}\" with {{count}} cases",
+    "detail_status_changed": "\"{{name}}\" {{from}} → {{to}}",
+    "detail_status_set": "Set to {{status}}",
+    "detail_exec_status": "\"{{case}}\" {{from}} → {{to}}",
+    "detail_exec_assigned": "\"{{case}}\" reassigned",
+    "detail_case_created": "\"{{title}}\"",
+    "detail_case_updated": "\"{{title}}\"",
+    "detail_case_cloned": "\"{{title}}\" (clone)",
+    "detail_jira_linked": "{{key}}",
+    "detail_shared_step": "\"{{name}}\"",
+    "detail_webhook": "{{url}} ({{count}} events)",
+    "detail_custom_fields": "{{count}} fields"
   },
   "test_level": {
     "label": "Test level",

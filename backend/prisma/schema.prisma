@@ -134,6 +134,7 @@ model User {
   lockedUntil     DateTime?
   // Manager-imposed lock — prevents login and API access entirely.
   isLocked        Boolean              @default(false)
+  lastLoginAt     DateTime?
   // TOTP two-factor authentication (opt-in per user).
   totpSecret      String?
   totpEnabledAt   DateTime?
@@ -287,6 +288,8 @@ model Milestone {
   dueDate     DateTime?
   createdAt   DateTime        @default(now())
   runs        TestRun[]
+
+  @@unique([projectId, name])
 }
 
 model TestSuite {
@@ -356,8 +359,8 @@ model TestRun {
   name         String
   description  String?
   environment  String?
-  platform     Platform?
-  connectivity Connectivity?
+  platforms    Platform[]
+  connectivities Connectivity[]
   locale       String?
   dueDate      DateTime?
   status       RunStatus       @default(IN_PROGRESS)

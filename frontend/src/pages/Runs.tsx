@@ -24,8 +24,6 @@ const schema = z.object({
   name: nonEmpty("Run name"),
   milestoneId: z.string().optional(),
   environment: nonEmpty("Environment"),
-  platform: z.string().optional(),
-  connectivity: z.string().optional(),
   locale: z.string().optional(),
   dueDate: z.string().optional(),
   description: z.string().optional(),
@@ -47,6 +45,8 @@ export function Runs() {
 
   const [open, setOpen] = useState(false);
   const [selectedSuiteIds, setSelectedSuiteIds] = useState<string[]>([]);
+  const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
+  const [selectedConnectivities, setSelectedConnectivities] = useState<string[]>([]);
   const [testLevels, setTestLevels] = useState<string[]>([]);
   const [suiteError, setSuiteError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -57,8 +57,6 @@ export function Runs() {
       name: "",
       milestoneId: "",
       environment: "",
-      platform: "",
-      connectivity: "",
       locale: "",
       dueDate: "",
       description: "",
@@ -107,8 +105,8 @@ export function Runs() {
         name: values.name,
         description: values.description || null,
         environment: values.environment,
-        platform: values.platform || null,
-        connectivity: values.connectivity || null,
+        platforms: selectedPlatforms.length ? selectedPlatforms : undefined,
+        connectivities: selectedConnectivities.length ? selectedConnectivities : undefined,
         locale: values.locale || null,
         testLevels: testLevels.length ? testLevels : undefined,
         dueDate: values.dueDate ? new Date(values.dueDate).toISOString() : null,
@@ -118,8 +116,8 @@ export function Runs() {
     onSuccess: (run) => {
       logger.info("run created", {
         runId: run.id,
-        platform: form.getValues("platform"),
-        connectivity: form.getValues("connectivity"),
+        platforms: selectedPlatforms,
+        connectivities: selectedConnectivities,
         locale: form.getValues("locale"),
         levels: testLevels,
       });
@@ -131,14 +129,14 @@ export function Runs() {
         name: "",
         milestoneId: "",
         environment: "",
-        platform: "",
-        connectivity: "",
         locale: "",
         dueDate: "",
         description: "",
         assigneeId: !isManager && user?.id ? user.id : "",
       });
       setSelectedSuiteIds([]);
+      setSelectedPlatforms([]);
+      setSelectedConnectivities([]);
       setTestLevels([]);
       setSuiteError(null);
       setSubmitError(null);
@@ -171,14 +169,14 @@ export function Runs() {
       name: "",
       milestoneId: "",
       environment: "",
-      platform: "",
-      connectivity: "",
       locale: "",
       dueDate: "",
       description: "",
       assigneeId: !isManager && user?.id ? user.id : "",
     });
     setSelectedSuiteIds([]);
+    setSelectedPlatforms([]);
+    setSelectedConnectivities([]);
     setTestLevels([]);
     setSuiteError(null);
     setSubmitError(null);
@@ -335,19 +333,37 @@ export function Runs() {
               <input type="date" className="input" {...form.register("dueDate")} />
             </Field>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            <Field name="platform" label={t("platform.label")} error={form.formState.errors.platform?.message}>
-              <select className="input" {...form.register("platform")}>
-                <option value="">{t("platform.any")}</option>
-                {PLATFORMS.map((p) => <option key={p} value={p}>{t(`platform.${p}`)}</option>)}
-              </select>
-            </Field>
-            <Field name="connectivity" label={t("connectivity.label")} error={form.formState.errors.connectivity?.message}>
-              <select className="input" {...form.register("connectivity")}>
-                <option value="">{t("connectivity.any")}</option>
-                {CONNECTIVITY.map((c) => <option key={c} value={c}>{t(`connectivity.${c}`)}</option>)}
-              </select>
-            </Field>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="label">{t("platform.label")}</label>
+              <div className="flex gap-2 flex-wrap">
+                {PLATFORMS.map((p) => (
+                  <label key={p} className="flex items-center gap-1 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={selectedPlatforms.includes(p)}
+                      onChange={() => setSelectedPlatforms((xs) => xs.includes(p) ? xs.filter((x) => x !== p) : [...xs, p])}
+                    />
+                    {t(`platform.${p}`)}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="label">{t("connectivity.label")}</label>
+              <div className="flex gap-2 flex-wrap">
+                {CONNECTIVITY.map((c) => (
+                  <label key={c} className="flex items-center gap-1 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={selectedConnectivities.includes(c)}
+                      onChange={() => setSelectedConnectivities((xs) => xs.includes(c) ? xs.filter((x) => x !== c) : [...xs, c])}
+                    />
+                    {t(`connectivity.${c}`)}
+                  </label>
+                ))}
+              </div>
+            </div>
             <Field name="locale" label={t("locale.label")} error={form.formState.errors.locale?.message}>
               <input className="input" placeholder={t("locale.placeholder")} {...form.register("locale")} />
             </Field>
@@ -416,7 +432,7 @@ export function Runs() {
         <div className="card divide-y divide-slate-100 dark:divide-slate-800">
           {runs.map((r: {
             id: string; name: string; project: { name: string }; milestone?: { name: string };
-            platform?: string; connectivity?: string; locale?: string; environment?: string;
+            platforms?: string[]; connectivities?: string[]; locale?: string; environment?: string;
             _count: { executions: number }; createdBy: { name: string }; dueDate?: string; status: string;
           }) => (
             <div key={r.id} className="flex items-center justify-between px-5 py-3">
@@ -446,7 +462,7 @@ export function Runs() {
         <div className="card divide-y divide-slate-100 dark:divide-slate-800">
           {runs.map((r: {
             id: string; name: string; project: { name: string }; milestone?: { name: string };
-            platform?: string; connectivity?: string; locale?: string; environment?: string;
+            platforms?: string[]; connectivities?: string[]; locale?: string; environment?: string;
             _count: { executions: number }; createdBy: { name: string }; dueDate?: string; status: string;
           }) => (
             <div key={r.id} className="flex items-center justify-between px-5 py-3 hover:bg-slate-50 dark:hover:bg-slate-800">
@@ -455,8 +471,8 @@ export function Runs() {
                 <div className="text-xs text-slate-500 flex items-center gap-2 flex-wrap">
                   <span>{r.project.name}</span>
                   {r.milestone && <Badge tone="violet">{r.milestone.name}</Badge>}
-                  {r.platform && <Badge tone="info">{t(`platform.${r.platform}`)}</Badge>}
-                  {r.connectivity && <Badge tone="success">{t(`connectivity.${r.connectivity}`)}</Badge>}
+                  {r.platforms?.map((p) => <Badge key={p} tone="info">{t(`platform.${p}`)}</Badge>)}
+                  {r.connectivities?.map((c) => <Badge key={c} tone="success">{t(`connectivity.${c}`)}</Badge>)}
                   {r.locale && <Badge tone="rose">{r.locale}</Badge>}
                   {r.environment && <Badge tone="neutral">{r.environment}</Badge>}
                   <span>{t("runs.cases_count", { count: r._count.executions })}</span>

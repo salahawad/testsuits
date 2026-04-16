@@ -322,7 +322,7 @@ Company
         └── TestRuns
               ├── Milestone (optional)
               ├── status (PENDING/IN_PROGRESS/COMPLETED/ARCHIVED)
-              ├── environment, platform, connectivity, locale, dueDate
+              ├── environment, platforms[], connectivities[], locale, dueDate
               └── TestExecutions
                     ├── status (PENDING/PASSED/FAILED/BLOCKED/SKIPPED)
                     ├── failureReason, actualResult, durationMinutes

@@ -103,6 +103,7 @@
     "WEBHOOK_NOT_FOUND": "Webhook introuvable.",
     "SHARED_STEP_NOT_FOUND": "Étape partagée introuvable.",
     "MILESTONE_NOT_FOUND": "Jalon introuvable.",
+    "MILESTONE_NAME_TAKEN": "Un jalon avec ce nom existe déjà dans ce projet.",
     "REQUIREMENT_NOT_FOUND": "Exigence introuvable.",
     "EXTERNAL_REF_DUPLICATE": "Cette référence externe existe déjà dans ce projet.",
     "CASE_NOT_FOUND_IN_PROJECT": "Cas introuvable dans ce projet.",
@@ -286,7 +287,7 @@
     "run_name": "Nom de l'exécution",
     "milestone": "Jalon",
     "environment": "Environnement",
-    "environment_placeholder": "Chrome 120 / Prod",
+    "environment_placeholder": "dev / test / prod",
     "due_date": "Échéance",
     "default_assignee": "Assigné par défaut",
     "include_suites": "Inclure les suites",
@@ -485,7 +486,9 @@
     "user_unlocked": "Utilisateur déverrouillé.",
     "invite_sent": "Invitation envoyée.",
     "member_removed": "Collaborateur retiré.",
-    "role_updated": "Rôle mis à jour."
+    "role_updated": "Rôle mis à jour.",
+    "last_login": "Dernière connexion",
+    "never_logged_in": "Jamais connecté"
   },
   "theme": {
     "light": "Clair",
@@ -574,7 +577,20 @@
     "project": "Projet",
     "entity": "Entité",
     "rows_count": "{{count}} lignes",
-    "action_placeholder": "ex. CASE_UPDATED"
+    "action_placeholder": "ex. CASE_UPDATED",
+    "details": "Détails",
+    "detail_run_created": "« {{name}} » avec {{count}} cas",
+    "detail_status_changed": "« {{name}} » {{from}} → {{to}}",
+    "detail_status_set": "Défini à {{status}}",
+    "detail_exec_status": "« {{case}} » {{from}} → {{to}}",
+    "detail_exec_assigned": "« {{case}} » réassigné",
+    "detail_case_created": "« {{title}} »",
+    "detail_case_updated": "« {{title}} »",
+    "detail_case_cloned": "« {{title}} » (clone)",
+    "detail_jira_linked": "{{key}}",
+    "detail_shared_step": "« {{name}} »",
+    "detail_webhook": "{{url}} ({{count}} événements)",
+    "detail_custom_fields": "{{count}} champs"
   },
   "test_level": {
     "label": "Niveau de test",

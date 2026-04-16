@@ -120,7 +120,7 @@ matrixRouter.get("/projects/:projectId", async (req: AuthedRequest, res, next) =
         status: true,
         executedAt: true,
         run: {
-          select: { id: true, name: true, platform: true, connectivity: true, locale: true, environment: true },
+          select: { id: true, name: true, platforms: true, connectivities: true, locale: true, environment: true },
         },
       },
     });
@@ -128,23 +128,30 @@ matrixRouter.get("/projects/:projectId", async (req: AuthedRequest, res, next) =
     const bucketValues = new Set<string>();
     const latestByCaseAndBucket = new Map<string, { status: string; executedAt: Date | null; runId: string; runName: string }>();
 
+    const dimensionFieldMap: Record<string, string> = { platform: "platforms", connectivity: "connectivities", locale: "locale" };
     for (const exec of executions) {
-      const raw = exec.run[dimension as Exclude<Dimension, "requirement">];
-      const bucket = raw ?? "—";
-      bucketValues.add(String(bucket));
-      const key = `${exec.caseId}::${bucket}`;
-      const prior = latestByCaseAndBucket.get(key);
-      if (
-        !prior ||
-        (exec.executedAt && prior.executedAt && exec.executedAt > prior.executedAt) ||
-        (!prior.executedAt && exec.executedAt)
-      ) {
-        latestByCaseAndBucket.set(key, {
-          status: exec.status,
-          executedAt: exec.executedAt,
-          runId: exec.run.id,
-          runName: exec.run.name,
-        });
+      const field = dimensionFieldMap[dimension] ?? dimension;
+      const raw = exec.run[field as keyof typeof exec.run];
+      // Arrays (platforms, connectivities) expand into one bucket per value;
+      // scalars (locale) are a single bucket.
+      const values = Array.isArray(raw) ? (raw.length ? raw : ["—"]) : [raw ?? "—"];
+      for (const v of values) {
+        const bucket = String(v);
+        bucketValues.add(bucket);
+        const key = `${exec.caseId}::${bucket}`;
+        const prior = latestByCaseAndBucket.get(key);
+        if (
+          !prior ||
+          (exec.executedAt && prior.executedAt && exec.executedAt > prior.executedAt) ||
+          (!prior.executedAt && exec.executedAt)
+        ) {
+          latestByCaseAndBucket.set(key, {
+            status: exec.status,
+            executedAt: exec.executedAt,
+            runId: exec.run.id,
+            runName: exec.run.name,
+          });
+        }
       }
     }
 
