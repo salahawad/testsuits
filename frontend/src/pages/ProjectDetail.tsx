@@ -10,6 +10,7 @@ import { Field } from "../components/Field";
 import { useZodForm } from "../lib/useZodForm";
 import { nonEmpty } from "../lib/schemas";
 import { apiErrorMessage } from "../lib/apiError";
+import { useAuth } from "../lib/auth";
 
 const suiteSchema = z.object({
   name: nonEmpty("Suite name"),
@@ -19,6 +20,7 @@ type SuiteValues = z.infer<typeof suiteSchema>;
 
 export function ProjectDetail() {
   const { t } = useTranslation();
+  const isManager = useAuth((s) => s.user?.role === "MANAGER" || s.user?.role === "ADMIN");
   const { id } = useParams();
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -70,7 +72,7 @@ export function ProjectDetail() {
         <div className="flex gap-2">
           <Link to={`/projects/${project.id}/milestones`} className="btn-secondary">{t("projects.milestones")}</Link>
           <Link to={`/projects/${project.id}/requirements`} className="btn-secondary">{t("requirements.title")}</Link>
-          <Link to={`/projects/${project.id}/settings`} className="btn-secondary">{t("projects.settings")}</Link>
+          {isManager && <Link to={`/projects/${project.id}/settings`} className="btn-secondary">{t("projects.settings")}</Link>}
           <Link to={`/runs?projectId=${project.id}`} className="btn-secondary">{t("projects.test_runs")}</Link>
           <button className="btn-primary" onClick={() => setOpen(true)}><Plus size={16} /> {t("projects.new_suite")}</button>
         </div>

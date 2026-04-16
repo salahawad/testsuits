@@ -21,7 +21,7 @@ const schema = z.object({
   projectId: nonEmpty("Project"),
   name: nonEmpty("Run name"),
   milestoneId: z.string().optional(),
-  environment: z.string().optional(),
+  environment: nonEmpty("Environment"),
   platform: z.string().optional(),
   connectivity: z.string().optional(),
   locale: z.string().optional(),
@@ -58,7 +58,7 @@ export function Runs() {
       locale: "",
       dueDate: "",
       description: "",
-      assigneeId: "",
+      assigneeId: !isManager && user?.id ? user.id : "",
     },
   });
   const projectId = form.watch("projectId");
@@ -101,7 +101,7 @@ export function Runs() {
         milestoneId: values.milestoneId || null,
         name: values.name,
         description: values.description || null,
-        environment: values.environment || null,
+        environment: values.environment,
         platform: values.platform || null,
         connectivity: values.connectivity || null,
         locale: values.locale || null,
@@ -130,7 +130,7 @@ export function Runs() {
         locale: "",
         dueDate: "",
         description: "",
-        assigneeId: "",
+        assigneeId: !isManager && user?.id ? user.id : "",
       });
       setSelectedSuiteIds([]);
       setTestLevels([]);
@@ -170,7 +170,7 @@ export function Runs() {
       locale: "",
       dueDate: "",
       description: "",
-      assigneeId: "",
+      assigneeId: !isManager && user?.id ? user.id : "",
     });
     setSelectedSuiteIds([]);
     setTestLevels([]);

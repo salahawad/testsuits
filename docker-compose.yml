@@ -82,6 +82,8 @@ services:
       SMTP_URL: ${SMTP_URL:-smtp://mailpit:1025}
       MAIL_FROM: ${MAIL_FROM:-TestSuits <no-reply@testsuits.local>}
       APP_URL: ${APP_URL:-http://localhost:5173}
+      GMAIL_USER: ${GMAIL_USER:-}
+      GMAIL_PASSWORD: ${GMAIL_PASSWORD:-}
     ports:
       - "${API_PORT:-4000}:4000"
     depends_on:

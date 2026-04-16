@@ -3,8 +3,13 @@ import pinoHttp from "pino-http";
 import { nanoid } from "nanoid";
 import { logger } from "../lib/logger";
 
+// Paths that K8s probes and load-balancers hit continuously.
+// Logging them floods stdout with no diagnostic value.
+const SILENT_PATHS = new Set(["/api/health"]);
+
 export const httpLogger: RequestHandler = pinoHttp({
   logger,
+  autoLogging: { ignore: (req) => SILENT_PATHS.has(req.url ?? "") },
   genReqId: (req, res) => {
     const existing = (req.headers["x-request-id"] as string | undefined) ?? nanoid(10);
     res.setHeader("x-request-id", existing);

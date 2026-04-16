@@ -7,6 +7,7 @@ export type User = {
   email: string;
   name: string;
   role: "ADMIN" | "MANAGER" | "TESTER" | "VIEWER";
+  hasAvatar?: boolean;
   company: Company;
 };
 
@@ -16,6 +17,7 @@ type AuthState = {
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, name: string, companyName: string) => Promise<void>;
   setSession: (token: string, user: User) => void;
+  updateUser: (patch: Partial<User>) => void;
   logout: () => void;
 };
 
@@ -46,6 +48,13 @@ export const useAuth = create<AuthState>((set) => ({
     localStorage.setItem("token", token);
     localStorage.setItem("user", JSON.stringify(user));
     set({ user, token });
+  },
+  updateUser: (patch) => {
+    set((s) => {
+      const user = s.user ? { ...s.user, ...patch } : null;
+      if (user) localStorage.setItem("user", JSON.stringify(user));
+      return { user };
+    });
   },
   logout: () => {
     localStorage.removeItem("token");

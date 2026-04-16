@@ -1,16 +1,26 @@
 import nodemailer, { Transporter } from "nodemailer";
 import { logger } from "./logger";
 
+const gmailUser = process.env.GMAIL_USER?.trim();
+const gmailPassword = process.env.GMAIL_PASSWORD?.trim();
 const smtpUrl = process.env.SMTP_URL;
-const from = process.env.MAIL_FROM ?? "TestSuits <no-reply@testsuits.local>";
+const from =
+  process.env.MAIL_FROM ??
+  (gmailUser ? `TestSuits <${gmailUser}>` : "TestSuits <no-reply@testsuits.local>");
 export const appUrl = process.env.APP_URL ?? "http://localhost:5173";
 
 let transporter: Transporter | null = null;
-if (smtpUrl) {
+if (gmailUser && gmailPassword) {
+  transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: { user: gmailUser, pass: gmailPassword },
+  });
+  logger.info({ gmailUser }, "mailer initialised (Gmail)");
+} else if (smtpUrl) {
   transporter = nodemailer.createTransport(smtpUrl);
-  logger.info({ smtpUrl: smtpUrl.replace(/\/\/[^@]*@/, "//***@") }, "mailer initialised");
+  logger.info({ smtpUrl: smtpUrl.replace(/\/\/[^@]*@/, "//***@") }, "mailer initialised (SMTP)");
 } else {
-  logger.warn("SMTP_URL not set — outgoing email will be logged only, not sent");
+  logger.warn("No mail transport configured — outgoing email will be logged only, not sent");
 }
 
 export type Mail = { to: string; subject: string; text: string; html?: string };

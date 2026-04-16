@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft, RefreshCw, X } from "lucide-react";
 import { api } from "../lib/api";
@@ -35,7 +35,9 @@ export function ProjectSettings() {
   const { t } = useTranslation();
   const qc = useQueryClient();
   const user = useAuth((s) => s.user);
-  const isManager = user?.role === "MANAGER";
+  const isManager = user?.role === "MANAGER" || user?.role === "ADMIN";
+
+  if (!isManager) return <Navigate to={`/projects/${id}`} replace />;
 
   const [tab, setTab] = useState<"jira" | "custom_fields" | "shared_steps" | "webhooks">("jira");
   const [form, setForm] = useState({

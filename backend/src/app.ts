@@ -24,7 +24,7 @@ import { samlRouter } from "./routes/saml";
 import { scimRouter, scimTokensRouter } from "./routes/scim";
 import { auditRouter } from "./routes/audit";
 import { errorHandler } from "./middleware/error";
-import { requireAuth } from "./middleware/auth";
+import { requireAuth, requireManager } from "./middleware/auth";
 import { httpLogger } from "./middleware/logging";
 
 export const app = express();
@@ -87,7 +87,7 @@ app.use("/api/matrix", requireAuth, matrixRouter);
 app.use("/api/companies", requireAuth, companiesRouter);
 app.use("/api/shared-steps", requireAuth, sharedStepsRouter);
 app.use("/api/webhooks", requireAuth, webhooksRouter);
-app.use("/api/tokens", requireAuth, tokensRouter);
+app.use("/api/tokens", requireAuth, requireManager, tokensRouter);
 app.use("/api/requirements", requireAuth, requirementsRouter);
 app.use("/api/audit", requireAuth, auditRouter);
 app.use("/api/saml", (req, _res, next) => {

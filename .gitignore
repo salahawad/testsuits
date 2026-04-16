@@ -11,6 +11,9 @@ postgres-data/
 .claude/
 *.tsbuildinfo
 
+# Kubernetes deployment manifests & production Dockerfiles (local-only)
+k8s/
+
 # Local-only seed extensions (per-developer fixtures — not shipped publicly)
 backend/prisma/seed.hapster.ts
 backend/prisma/seed.*.local.ts

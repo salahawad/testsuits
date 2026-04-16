@@ -26,6 +26,7 @@ import { ForgotPassword } from "./pages/ForgotPassword";
 import { ResetPassword } from "./pages/ResetPassword";
 import { AcceptInvite } from "./pages/AcceptInvite";
 import { Requirements } from "./pages/Requirements";
+import { Profile } from "./pages/Profile";
 
 function Protected({ children }: { children: React.ReactNode }) {
   const user = useAuth((s) => s.user);
@@ -80,6 +81,7 @@ export function App() {
       <Route path="/company" element={<Protected><CompanySettings /></Protected>} />
       <Route path="/sso" element={<Protected><SsoSettings /></Protected>} />
       <Route path="/audit" element={<Protected><Audit /></Protected>} />
+      <Route path="/profile" element={<Protected><Profile /></Protected>} />
       <Route path="*" element={<Protected><NotFound /></Protected>} />
     </Routes>
     </>

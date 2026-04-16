@@ -3,7 +3,7 @@ import { Link, NavLink, useLocation, useNavigate } from "react-router-dom";
 import {
   LayoutDashboard, FolderKanban, PlayCircle, Grid3x3, Users,
   Building2, LogOut, ChevronLeft, ChevronRight, Globe, KeyRound,
-  ShieldCheck, FileSearch, Menu, X,
+  ShieldCheck, FileSearch, Menu, X, UserCircle,
 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../lib/auth";
@@ -12,6 +12,7 @@ import { logger } from "../lib/logger";
 import { Logo } from "./Logo";
 import { Badge } from "./ui/Badge";
 import { ThemeToggle } from "./ThemeToggle";
+import { UserAvatar } from "./UserAvatar";
 import clsx from "clsx";
 
 const COLLAPSE_KEY = "ts_nav_collapsed";
@@ -61,7 +62,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const adminNav = [
     ...(isManager ? [{ to: "/team", icon: Users, label: t("team.title") }] : []),
     ...(isManager ? [{ to: "/audit", icon: FileSearch, label: t("audit.title") }] : []),
-    { to: "/tokens", icon: KeyRound, label: t("tokens.title") },
+    ...(isManager ? [{ to: "/tokens", icon: KeyRound, label: t("tokens.title") }] : []),
     ...(isManager ? [{ to: "/company", icon: Building2, label: t("company.settings_title") }] : []),
     ...(isAdmin ? [{ to: "/sso", icon: ShieldCheck, label: t("sso.title") }] : []),
   ];
@@ -195,9 +196,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </NavLink>
           ))}
 
-          <div className={clsx("text-[10px] uppercase tracking-wide text-slate-400 mt-4 mb-1 px-3", collapsed && "md:hidden")}>
-            {t("nav.admin")}
-          </div>
+          {adminNav.length > 0 && (
+            <div className={clsx("text-[10px] uppercase tracking-wide text-slate-400 mt-4 mb-1 px-3", collapsed && "md:hidden")}>
+              {t("nav.admin")}
+            </div>
+          )}
           {adminNav.map(({ to, icon: Icon, label }) => (
             <NavLink
               key={to}
@@ -245,14 +248,17 @@ export function Layout({ children }: { children: React.ReactNode }) {
 
           <div className={clsx("px-2", collapsed && "md:hidden")}>
             <div className="text-[10px] uppercase tracking-wide text-slate-400">{t("nav.signed_in_as")}</div>
-            <div className="text-sm font-medium flex items-center gap-2 mt-0.5">
-              <span className="truncate flex-1">{user?.name}</span>
-              {user?.role && (
-                <Badge tone={user.role === "MANAGER" ? "violet" : "neutral"} size="xs">
-                  {t(`team.${user.role.toLowerCase()}`)}
-                </Badge>
-              )}
-            </div>
+            <Link to="/profile" className="block text-sm font-medium mt-0.5 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+              <div className="flex items-center gap-2">
+                <UserAvatar userId={user?.id ?? ""} name={user?.name ?? ""} hasAvatar={user?.hasAvatar} size="w-6 h-6 text-xs" />
+                <span className="truncate flex-1">{user?.name}</span>
+                {user?.role && (
+                  <Badge tone={user.role === "MANAGER" ? "violet" : "neutral"} size="xs">
+                    {t(`team.${user.role.toLowerCase()}`)}
+                  </Badge>
+                )}
+              </div>
+            </Link>
             <button
               onClick={() => {
                 logger.info("user logout", { userId: user?.id });
@@ -265,17 +271,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
             </button>
           </div>
           {collapsed && (
-            <button
-              onClick={() => {
-                logger.info("user logout", { userId: user?.id });
-                logout();
-                navigate("/login");
-              }}
-              className="hidden md:flex w-full items-center justify-center p-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400"
-              title={t("nav.logout")}
+            <Link
+              to="/profile"
+              className="hidden md:flex w-full items-center justify-center p-2 rounded hover:bg-slate-100 dark:hover:bg-slate-800"
+              title={t("profile.title")}
             >
-              <LogOut size={16} />
-            </button>
+              <UserAvatar userId={user?.id ?? ""} name={user?.name ?? ""} hasAvatar={user?.hasAvatar} size="w-7 h-7 text-xs" />
+            </Link>
           )}
         </div>
       </aside>

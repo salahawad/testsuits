@@ -1,0 +1,300 @@
+import { useRef, useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
+import { useMutation } from "@tanstack/react-query";
+import { useTranslation } from "react-i18next";
+import { z } from "zod";
+import { LogOut, Camera, Trash2 } from "lucide-react";
+import { api } from "../lib/api";
+import { useAuth } from "../lib/auth";
+import { useZodForm } from "../lib/useZodForm";
+import { nonEmpty, passwordPolicy } from "../lib/schemas";
+import { apiErrorMessage } from "../lib/apiError";
+import { logger } from "../lib/logger";
+import { PageHeader } from "../components/ui/PageHeader";
+import { Field } from "../components/Field";
+import { Button } from "../components/ui/Button";
+import { Alert } from "../components/ui/Alert";
+import { UserAvatar } from "../components/UserAvatar";
+
+function titleCase(s: string) {
+  return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
+}
+
+function PasswordStrength({ value }: { value: string }) {
+  const { t } = useTranslation();
+  const strength = useMemo(() => {
+    if (!value) return 0;
+    let score = 0;
+    if (value.length >= 10) score++;
+    if (value.length >= 14) score++;
+    if (/[a-z]/.test(value) && /[A-Z]/.test(value)) score++;
+    if (/\d/.test(value)) score++;
+    if (/[^a-zA-Z0-9]/.test(value)) score++;
+    return Math.min(score, 4);
+  }, [value]);
+
+  if (!value) return null;
+
+  const labels = [
+    t("profile.strength_weak"),
+    t("profile.strength_weak"),
+    t("profile.strength_fair"),
+    t("profile.strength_good"),
+    t("profile.strength_strong"),
+  ];
+  const colors = [
+    "bg-red-500",
+    "bg-red-500",
+    "bg-yellow-500",
+    "bg-blue-500",
+    "bg-green-500",
+  ];
+
+  return (
+    <div className="space-y-1">
+      <div className="flex gap-1">
+        {[0, 1, 2, 3].map((i) => (
+          <div
+            key={i}
+            className={`h-1 flex-1 rounded-full transition-colors ${
+              i <= strength - 1 ? colors[strength] : "bg-slate-200 dark:bg-slate-700"
+            }`}
+          />
+        ))}
+      </div>
+      <p className="text-xs text-slate-500 dark:text-slate-400">{labels[strength]}</p>
+    </div>
+  );
+}
+
+// --- Profile form -----------------------------------------------------------
+
+const profileSchema = z.object({ name: nonEmpty("Name") });
+type ProfileValues = z.infer<typeof profileSchema>;
+
+function ProfileSection() {
+  const { t } = useTranslation();
+  const { user, updateUser } = useAuth();
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
+  // Bumped after upload/delete to force <img> cache-bust.
+  const [avatarVer, setAvatarVer] = useState(0);
+
+  const form = useZodForm<ProfileValues>(profileSchema, {
+    defaultValues: { name: user?.name ?? "" },
+  });
+
+  const save = useMutation({
+    mutationFn: async (values: ProfileValues) =>
+      (await api.patch("/users/me", values, { silent: true })).data,
+    onSuccess: (data: { name: string }) => {
+      updateUser({ name: data.name });
+      setError(null);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+      logger.info("profile updated");
+    },
+    onError: (e) => {
+      setSaved(false);
+      setError(apiErrorMessage(e, t("common.something_went_wrong")));
+    },
+  });
+
+  const uploadAvatar = useMutation({
+    mutationFn: async (file: File) => {
+      const fd = new FormData();
+      fd.append("file", file);
+      return (await api.post("/users/me/avatar", fd, { silent: true })).data;
+    },
+    onSuccess: () => {
+      updateUser({ hasAvatar: true });
+      setAvatarVer((v) => v + 1);
+      logger.info("avatar uploaded");
+    },
+    onError: (e) => setError(apiErrorMessage(e, t("common.something_went_wrong"))),
+  });
+
+  const removeAvatar = useMutation({
+    mutationFn: async () => (await api.delete("/users/me/avatar", { silent: true })).data,
+    onSuccess: () => {
+      updateUser({ hasAvatar: false });
+      setAvatarVer((v) => v + 1);
+      logger.info("avatar removed");
+    },
+    onError: (e) => setError(apiErrorMessage(e, t("common.something_went_wrong"))),
+  });
+
+  return (
+    <section className="rounded-lg border border-slate-200 dark:border-slate-700 p-5">
+      <h2 className="text-base font-semibold mb-4">{t("profile.details")}</h2>
+
+      {/* Avatar */}
+      <div className="flex items-center gap-4 mb-5">
+        <UserAvatar
+          key={avatarVer}
+          userId={user?.id ?? ""}
+          name={user?.name ?? ""}
+          hasAvatar={user?.hasAvatar}
+          size="w-16 h-16 text-2xl"
+        />
+        <div className="flex flex-col gap-1.5">
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            className="hidden"
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) uploadAvatar.mutate(f);
+              e.target.value = "";
+            }}
+          />
+          <Button
+            size="sm"
+            variant="secondary"
+            leftIcon={<Camera size={14} />}
+            loading={uploadAvatar.isPending}
+            onClick={() => fileRef.current?.click()}
+          >
+            {t("profile.upload_avatar")}
+          </Button>
+          {user?.hasAvatar && (
+            <Button
+              size="sm"
+              variant="ghost"
+              leftIcon={<Trash2 size={14} />}
+              loading={removeAvatar.isPending}
+              onClick={() => removeAvatar.mutate()}
+            >
+              {t("profile.remove_avatar")}
+            </Button>
+          )}
+          <span className="text-xs text-slate-400">{t("profile.avatar_hint")}</span>
+        </div>
+      </div>
+
+      <form noValidate onSubmit={form.handleSubmit((v) => save.mutate(v))} className="space-y-4 max-w-md">
+        <div>
+          <label className="label">{t("auth.email")}</label>
+          <p className="text-sm text-slate-700 dark:text-slate-300">{user?.email}</p>
+        </div>
+        <Field name="name" label={t("auth.name")} error={form.formState.errors.name?.message}>
+          <input className="input" {...form.register("name")} />
+        </Field>
+        <div>
+          <label className="label">{t("profile.role")}</label>
+          <p className="text-sm font-medium text-slate-700 dark:text-slate-300">{titleCase(user?.role ?? "")}</p>
+        </div>
+        {error && <Alert>{error}</Alert>}
+        {saved && <Alert tone="success">{t("profile.saved")}</Alert>}
+        <Button type="submit" variant="primary" loading={save.isPending} disabled={!form.formState.isDirty}>{t("common.save")}</Button>
+      </form>
+    </section>
+  );
+}
+
+// --- Password form ----------------------------------------------------------
+
+const passwordSchema = z
+  .object({
+    currentPassword: z.string().min(1, "Current password is required"),
+    newPassword: passwordPolicy,
+    confirmPassword: z.string().min(1, "Confirm your new password"),
+  })
+  .refine((d) => d.newPassword === d.confirmPassword, {
+    message: "Passwords do not match",
+    path: ["confirmPassword"],
+  });
+type PasswordValues = z.infer<typeof passwordSchema>;
+
+function PasswordSection() {
+  const { t } = useTranslation();
+  const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  const form = useZodForm<PasswordValues>(passwordSchema, {
+    defaultValues: { currentPassword: "", newPassword: "", confirmPassword: "" },
+  });
+
+  const change = useMutation({
+    mutationFn: async (values: PasswordValues) =>
+      (await api.put("/users/me/password", {
+        currentPassword: values.currentPassword,
+        newPassword: values.newPassword,
+      }, { silent: true })).data,
+    onSuccess: () => {
+      form.reset();
+      setError(null);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+      logger.info("password changed");
+    },
+    onError: (e) => {
+      setSaved(false);
+      setError(apiErrorMessage(e, t("common.something_went_wrong")));
+    },
+  });
+
+  const newPasswordValue = form.watch("newPassword");
+
+  return (
+    <section className="rounded-lg border border-slate-200 dark:border-slate-700 p-5">
+      <h2 className="text-base font-semibold mb-4">{t("profile.change_password")}</h2>
+      <form noValidate onSubmit={form.handleSubmit((v) => change.mutate(v))} className="space-y-4 max-w-md">
+        <Field name="currentPassword" label={t("profile.current_password")} error={form.formState.errors.currentPassword?.message}>
+          <input type="password" className="input" autoComplete="current-password" {...form.register("currentPassword")} />
+        </Field>
+        <div className="space-y-1">
+          <Field name="newPassword" label={t("profile.new_password")} error={form.formState.errors.newPassword?.message}>
+            <input type="password" className="input" autoComplete="new-password" {...form.register("newPassword")} />
+          </Field>
+          <PasswordStrength value={newPasswordValue} />
+        </div>
+        <Field name="confirmPassword" label={t("profile.confirm_password")} error={form.formState.errors.confirmPassword?.message}>
+          <input type="password" className="input" autoComplete="new-password" {...form.register("confirmPassword")} />
+        </Field>
+        {error && <Alert>{error}</Alert>}
+        {saved && <Alert tone="success">{t("profile.password_saved")}</Alert>}
+        <Button type="submit" variant="primary" loading={change.isPending}>{t("profile.change_password")}</Button>
+      </form>
+    </section>
+  );
+}
+
+// --- Page -------------------------------------------------------------------
+
+export function Profile() {
+  const { t } = useTranslation();
+  const { user, logout } = useAuth();
+  const navigate = useNavigate();
+
+  return (
+    <>
+      <PageHeader
+        title={t("profile.title")}
+        subtitle={t("profile.subtitle")}
+        eyebrow={user?.company?.name}
+      />
+      <div className="space-y-4 mt-6 max-w-2xl">
+        <ProfileSection />
+        <PasswordSection />
+        <section className="rounded-lg border border-red-200 dark:border-red-900/40 p-5">
+          <h2 className="text-base font-semibold mb-2">{t("profile.session")}</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">{t("profile.logout_hint")}</p>
+          <Button
+            variant="danger"
+            leftIcon={<LogOut size={14} />}
+            onClick={() => {
+              logger.info("user logout from profile", { userId: user?.id });
+              logout();
+              navigate("/login");
+            }}
+          >
+            {t("nav.logout")}
+          </Button>
+        </section>
+      </div>
+    </>
+  );
+}

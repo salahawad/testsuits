@@ -23,7 +23,7 @@ const upsertSchema = z.object({
   suiteId: z.string(),
   title: z.string().trim().min(1, "Title is required"),
   preconditions: z.string().optional().nullable(),
-  priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]).optional(),
+  priority: z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]),
   testLevel: z.enum(["SMOKE", "SANITY", "REGRESSION", "ADVANCED", "EXPLORATORY"]).optional(),
   tags: z.array(z.string()).optional(),
   steps: z.array(stepSchema).optional(),

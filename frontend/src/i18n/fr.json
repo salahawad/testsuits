@@ -210,6 +210,7 @@
     "validation": {
       "name_required": "Le nom de l'exécution est requis.",
       "project_required": "Sélectionnez d'abord un projet.",
+      "environment_required": "L'environnement est requis.",
       "suite_required": "Sélectionnez au moins une suite."
     }
   },
@@ -494,5 +495,26 @@
     "link_rejected": "Cette URL n'est pas autorisée. Seuls les liens http, https, mailto et tel sont acceptés.",
     "undo": "Annuler",
     "redo": "Rétablir"
+  },
+  "profile": {
+    "title": "Mon profil",
+    "subtitle": "Gérez vos informations de compte et votre sécurité.",
+    "details": "Informations du profil",
+    "role": "Rôle",
+    "saved": "Profil enregistré.",
+    "change_password": "Changer le mot de passe",
+    "current_password": "Mot de passe actuel",
+    "new_password": "Nouveau mot de passe",
+    "confirm_password": "Confirmer le nouveau mot de passe",
+    "password_saved": "Mot de passe modifié avec succès.",
+    "upload_avatar": "Ajouter une photo",
+    "remove_avatar": "Supprimer la photo",
+    "avatar_hint": "JPEG, PNG, WebP ou GIF. 2 Mo max.",
+    "strength_weak": "Faible",
+    "strength_fair": "Passable",
+    "strength_good": "Bon",
+    "strength_strong": "Fort",
+    "session": "Session",
+    "logout_hint": "Déconnectez-vous de votre session actuelle sur cet appareil."
   }
 }

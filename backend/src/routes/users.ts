@@ -1,11 +1,14 @@
 import { Router } from "express";
 import bcrypt from "bcryptjs";
+import multer from "multer";
+import { randomUUID } from "crypto";
 import { z } from "zod";
 import { prisma } from "../db";
 import { AuthedRequest, requireManager } from "../middleware/auth";
 import { httpError } from "../middleware/error";
 import { userListWhere } from "../middleware/scope";
 import { logger } from "../lib/logger";
+import { putObject, deleteObject, getDownloadUrl } from "../lib/s3";
 
 export const usersRouter = Router();
 
@@ -34,12 +37,127 @@ usersRouter.get("/me", async (req: AuthedRequest, res, next) => {
       name: me.name,
       email: me.email,
       role: me.role,
+      hasAvatar: !!me.avatarKey,
       company: { id: me.company.id, name: me.company.name, slug: me.company.slug },
     });
   } catch (e) {
     next(e);
   }
 });
+
+// --- Self-service profile endpoints -----------------------------------------
+
+const profileSchema = z.object({
+  name: z.string().min(1).max(120),
+});
+
+usersRouter.patch("/me", async (req: AuthedRequest, res, next) => {
+  try {
+    const { name } = profileSchema.parse(req.body);
+    const user = await prisma.user.update({
+      where: { id: req.user!.id },
+      data: { name },
+      select: { id: true, name: true, email: true, role: true },
+    });
+    logger.info({ userId: user.id }, "profile updated");
+    res.json(user);
+  } catch (e) {
+    next(e);
+  }
+});
+
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1),
+  newPassword: z
+    .string()
+    .min(10, "Password must be at least 10 characters")
+    .max(128, "Password must be at most 128 characters"),
+});
+
+usersRouter.put("/me/password", async (req: AuthedRequest, res, next) => {
+  try {
+    const { currentPassword, newPassword } = changePasswordSchema.parse(req.body);
+    const user = await prisma.user.findUnique({ where: { id: req.user!.id } });
+    if (!user) throw httpError(404, "User not found");
+    const ok = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!ok) {
+      logger.warn({ userId: user.id }, "password change failed: wrong current password");
+      throw httpError(400, "Current password is incorrect");
+    }
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+      where: { id: req.user!.id },
+      data: { passwordHash, passwordUpdatedAt: new Date() },
+    });
+    logger.info({ userId: user.id }, "password changed");
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+// --- Avatar ----------------------------------------------------------------
+
+const AVATAR_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const avatarUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB
+});
+
+usersRouter.post("/me/avatar", avatarUpload.single("file"), async (req: AuthedRequest, res, next) => {
+  try {
+    if (!req.file) throw httpError(400, "No file uploaded");
+    if (!AVATAR_MIME.has(req.file.mimetype)) throw httpError(400, "Only JPEG, PNG, WebP, and GIF are allowed");
+
+    const ext = req.file.originalname.split(".").pop() ?? "jpg";
+    const storageKey = `avatars/${req.user!.id}/${randomUUID()}.${ext}`;
+    await putObject(storageKey, req.file.buffer, req.file.mimetype);
+
+    // Remove old avatar from storage if it exists.
+    const prev = await prisma.user.findUnique({ where: { id: req.user!.id }, select: { avatarKey: true } });
+    if (prev?.avatarKey) {
+      await deleteObject(prev.avatarKey).catch(() => {});
+    }
+
+    await prisma.user.update({ where: { id: req.user!.id }, data: { avatarKey: storageKey } });
+    logger.info({ userId: req.user!.id, storageKey }, "avatar uploaded");
+    res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+usersRouter.delete("/me/avatar", async (req: AuthedRequest, res, next) => {
+  try {
+    const user = await prisma.user.findUnique({ where: { id: req.user!.id }, select: { avatarKey: true } });
+    if (user?.avatarKey) {
+      await deleteObject(user.avatarKey).catch(() => {});
+      await prisma.user.update({ where: { id: req.user!.id }, data: { avatarKey: null } });
+      logger.info({ userId: req.user!.id }, "avatar removed");
+    }
+    res.status(204).end();
+  } catch (e) {
+    next(e);
+  }
+});
+
+usersRouter.get("/:id/avatar", async (req: AuthedRequest, res, next) => {
+  try {
+    const target = await prisma.user.findUnique({
+      where: { id: req.params.id },
+      select: { avatarKey: true, companyId: true },
+    });
+    if (!target || target.companyId !== req.user!.companyId || !target.avatarKey) {
+      throw httpError(404, "Avatar not found");
+    }
+    const url = await getDownloadUrl(target.avatarKey);
+    res.redirect(url);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// --- Manager-only endpoints ------------------------------------------------
 
 const createSchema = z.object({
   email: z.string().email(),

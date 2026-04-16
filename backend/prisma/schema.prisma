@@ -128,6 +128,7 @@ model User {
   // Bumped on password change / forced sign-out. Any JWT with iat < this value
   // is treated as revoked, even if not yet expired.
   passwordUpdatedAt DateTime?
+  avatarKey       String?
   role            Role                 @default(TESTER)
   companyId       String
   company         Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)

@@ -17,7 +17,7 @@ const createSchema = z.object({
   milestoneId: z.string().optional().nullable(),
   name: z.string().trim().min(1, "Run name is required"),
   description: z.string().optional().nullable(),
-  environment: z.string().optional().nullable(),
+  environment: z.string().trim().min(1, "Environment is required"),
   platform: z.enum(PLATFORMS).optional().nullable(),
   connectivity: z.enum(CONNECTIVITY).optional().nullable(),
   locale: z.string().optional().nullable(),

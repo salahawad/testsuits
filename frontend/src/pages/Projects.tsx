@@ -10,6 +10,7 @@ import { useZodForm } from "../lib/useZodForm";
 import { nonEmpty } from "../lib/schemas";
 import { apiErrorMessage } from "../lib/apiError";
 import { Badge } from "../components/ui/Badge";
+import { useAuth } from "../lib/auth";
 
 const schema = z.object({
   key: z
@@ -24,6 +25,7 @@ type Values = z.infer<typeof schema>;
 
 export function Projects() {
   const { t } = useTranslation();
+  const isManager = useAuth((s) => s.user?.role === "MANAGER" || s.user?.role === "ADMIN");
   const qc = useQueryClient();
   const [open, setOpen] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -66,7 +68,7 @@ export function Projects() {
           <h1 className="text-2xl font-bold">{t("projects.title")}</h1>
           <p className="text-sm text-slate-500">{t("projects.subtitle")}</p>
         </div>
-        <button className="btn-primary" onClick={() => setOpen(true)}><Plus size={16} /> {t("projects.new_project")}</button>
+        {isManager && <button className="btn-primary" onClick={() => setOpen(true)}><Plus size={16} /> {t("projects.new_project")}</button>}
       </header>
 
       {open && (

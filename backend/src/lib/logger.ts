@@ -53,6 +53,9 @@ export const logger = pino({
       "*.apiKey",
       "*.accessKey",
       "*.secretKey",
+      // Gmail / SMTP credentials
+      "*.gmailPassword",
+      "*.pass",
     ],
     censor: "[REDACTED]",
   },
