@@ -36,6 +36,10 @@ const limiterCommon = {
   standardHeaders: true,
   legacyHeaders: false,
   message: { error: "RATE_LIMIT_EXCEEDED" },
+  // Integration tests hammer these endpoints from a single IP; rate-limit
+  // enforcement turns test flakes into cascading 429s. Limits stay on for dev
+  // and prod.
+  skip: () => process.env.NODE_ENV === "test",
 };
 const loginLimiter = rateLimit({ windowMs: 60_000, max: 10, ...limiterCommon });
 const signupLimiter = rateLimit({ windowMs: 60 * 60_000, max: 5, ...limiterCommon });

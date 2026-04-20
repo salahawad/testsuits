@@ -96,6 +96,8 @@ services:
     volumes:
       - ./backend/src:/app/src
       - ./backend/prisma:/app/prisma
+      - ./backend/package.json:/app/package.json
+      - ./backend/vitest.config.ts:/app/vitest.config.ts
     command: sh -c "npx prisma db push --accept-data-loss && npx prisma db seed && npm run dev"
 
   web:
