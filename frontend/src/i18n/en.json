@@ -116,6 +116,12 @@
     "JIRA_PROJECT_KEY_REQUIRED": "Jira project key is required.",
     "JIRA_ISSUE_ALREADY_LINKED": "A Jira issue is already linked to this execution.",
     "EXECUTION_NOT_FAILED": "Execution must be failed to create a Jira bug.",
+    "EXECUTION_RESULT_NOT_FOUND": "Result row not found.",
+    "RESULT_NOT_FAILED": "Result must be failed to create a Jira bug.",
+    "RESULT_FAILED_REQUIRES_REASON_AND_DETAILS": "Add the failure reason and actual result before marking this combination as failed.",
+    "USE_RESULT_ENDPOINT_FOR_STATUS": "This run tracks status per combination — update each row individually.",
+    "UNKNOWN_CONFIG_OPTION": "One of the selected options is not available in your company. Refresh and try again.",
+    "CONFIG_OPTION_NOT_FOUND": "Option not found.",
     "JIRA_REQUEST_FAILED": "Jira request failed.",
     "JIRA_PROJECT_NOT_SET": "This project has no Jira target set — configure it in project settings.",
     "USER_NOT_FOUND": "User not found.",
@@ -198,6 +204,7 @@
     "title": "Projects",
     "subtitle": "Group your test suites by product or component.",
     "new_project": "New project",
+    "back_to_projects": "Back to projects",
     "key": "Key",
     "suites_count": "{{count}} suites",
     "runs_count": "{{count}} runs",
@@ -263,6 +270,8 @@
     "title": "Test Runs",
     "subtitle": "Execute test cases and track results.",
     "new_run": "New run",
+    "back_to_runs": "Back to runs",
+    "no_options_configured": "No options — add one in Company settings.",
     "project": "Project",
     "select_project": "Select project…",
     "run_name": "Run name",
@@ -313,7 +322,19 @@
     "cases_count": "{{count}} cases",
     "by_user": "by {{name}}",
     "due_on": "due {{date}}",
-    "file_info": "{{size}} KB · by {{name}}"
+    "file_info": "{{size}} KB · by {{name}}",
+    "matrix": {
+      "title": "Result per combination",
+      "default_combo": "Default",
+      "progress": "{{done}} of {{total}} tested",
+      "all_passed": "All {{count}} combinations passed",
+      "failed_on": "Failed on: {{combos}}",
+      "summary": "{{passed}} passed · {{failed}} failed · {{pending}} pending · {{total}} total",
+      "mark_all_passed": "Mark all passed",
+      "mark_all_passed_hint": "Set every remaining pending row to Passed.",
+      "all_passed_saved": "All combinations marked passed.",
+      "needs_reason_details": "Add reason and actual result to save this failure."
+    }
   },
   "milestones": {
     "title": "Milestones",
@@ -534,6 +555,31 @@
     "settings_title": "Company settings",
     "settings_subtitle": "Jira integration and templates apply to every project in this company."
   },
+  "run_options": {
+    "title": "Test run options",
+    "subtitle": "Platforms, connectivities, and locales offered when creating a test run. Removed options are soft-deleted so existing runs keep their labels.",
+    "kind": {
+      "PLATFORM": "Platforms",
+      "CONNECTIVITY": "Connectivity",
+      "LOCALE": "Locales"
+    },
+    "empty": "No options yet.",
+    "show_deleted": "Show deleted",
+    "remove": "Remove",
+    "restore": "Restore",
+    "add_new": "Add new",
+    "add_button": "Add option",
+    "code_label": "Code (stored on runs — cannot change later)",
+    "label_label": "Label (shown in the UI)",
+    "code_hint": "e.g. {{example}}",
+    "label_hint": "e.g. {{example}}",
+    "code_placeholder": "Code (e.g. LINUX)",
+    "label_placeholder": "Label (e.g. Linux)",
+    "added": "Option added.",
+    "removed": "Option removed — existing runs keep their label.",
+    "restored": "Option restored.",
+    "confirm_remove": "Remove \"{{label}}\"? Existing runs keep it; new runs won't offer it."
+  },
   "sso": {
     "title": "SSO & Provisioning",
     "subtitle": "Configure SAML single sign-on and SCIM user provisioning for this company.",
@@ -606,7 +652,6 @@
     "any": "Any",
     "WEB": "Web",
     "WINDOWS": "Windows",
-    "MACOS": "macOS",
     "ANDROID": "Android",
     "IOS": "iOS"
   },
@@ -618,7 +663,13 @@
   },
   "locale": {
     "label": "Locale",
-    "placeholder": "e.g. en, fr, ar"
+    "placeholder": "e.g. en, fr",
+    "en": "English",
+    "fr": "French",
+    "es": "Spanish",
+    "pl": "Polish",
+    "hu": "Hungarian",
+    "de": "German"
   },
   "requirement": {
     "label": "Requirement",

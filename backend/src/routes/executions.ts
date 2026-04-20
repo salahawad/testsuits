@@ -26,9 +26,25 @@ executionsRouter.patch("/:id", requireWrite, async (req: AuthedRequest, res, nex
     const data = updateSchema.parse(req.body);
     const before = await prisma.testExecution.findFirst({
       where: executionWhere(req.user!, { id: req.params.id }),
-      include: { run: true },
+      include: { run: true, _count: { select: { results: true } } },
     });
     if (!before) throw httpError(404, "EXECUTION_NOT_FOUND");
+
+    // For runs created under the per-combo model, status / reason / actual
+    // must be written per result row. Only legacy executions (no results[])
+    // may update these fields directly on the parent.
+    const hasResults = before._count.results > 0;
+    if (hasResults) {
+      const perResultFields = ["status", "failureReason", "actualResult", "jiraIssueKey", "jiraIssueUrl"] as const;
+      const violated = perResultFields.filter((k) => data[k] !== undefined);
+      if (violated.length) {
+        req.log.warn(
+          { executionId: before.id, violated, userId: req.user!.id },
+          "legacy PATCH /executions/:id blocked — use per-result endpoint",
+        );
+        throw httpError(400, "USE_RESULT_ENDPOINT_FOR_STATUS");
+      }
+    }
 
     // Managers and testers can both (re)assign executions — the assignee must
     // be a member of the caller's company, and scope middleware already
@@ -112,6 +128,7 @@ executionsRouter.get("/:id", async (req: AuthedRequest, res, next) => {
         executedBy: { select: { id: true, name: true } },
         assignee: { select: { id: true, name: true } },
         run: true,
+        results: { orderBy: { createdAt: "asc" } },
       },
     });
     if (!execution) return res.status(404).json({ error: "EXECUTION_NOT_FOUND" });

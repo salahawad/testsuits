@@ -7,7 +7,7 @@ A self-hosted test management platform for manual functional QA. Organise projec
 - **Custom fields** — per-project configurable fields (text, long text, number, select, checkbox) that attach to every test case in the project.
 - **Shared / reusable steps** — a per-project library of named steps; insert one into any case from the step editor.
 - **Rich-text editor** — WYSIWYG (TipTap) with a toolbar (bold, italic, inline code, bullet/numbered lists, links, undo/redo) on the fields where formatting actually helps forensic detail: step action/expected, preconditions, shared-step library entries, and — on execution detail — *Actual result* and *Why it failed*. Stored and rendered as Markdown, so plain-text content round-trips and existing rows stay readable. Link URLs are restricted to `http(s)`/`mailto`/`tel` — `javascript:` and other schemes are blocked at both insert and render time.
-- **Webhooks** — configure outbound HTTP webhooks per project on events (`run.created`, `run.completed`, `run.archived`, `execution.failed`, `execution.passed`, `jira.bug_created`). Optional HMAC-SHA256 signing, delivery log, test-fire button.
+- **Webhooks** — configure outbound HTTP webhooks per project on events (`run.created`, `run.completed`, `run.archived`, `execution.failed`, `execution.passed`, `execution_result.failed`, `execution_result.passed`, `jira.bug_created`). Optional HMAC-SHA256 signing, delivery log, test-fire button.
 - **Kanban run view** — toggle between list and kanban on the Runs page; managers drag cards between columns to change a run's status.
 - **Archive runs** — managers can archive a test run to remove it from the active list. An **Archived** tab on the Runs page shows all archived runs; managers can restore them back to active.
 - **Evidence storage** — upload screenshots, videos and logs against cases or executions.
@@ -207,9 +207,23 @@ Jira is split across two screens: credentials + templates live at the **company*
 3. Optionally override the issue type and pick a parent epic.
 4. **Save**.
 
+### Per-combination execution (platforms × connectivity × locale)
+
+When a run is created with multi-select platforms (`Web`, `Android`, …), multi-select connectivities (`Online`, `Offline`), and a comma-separated locale field (`en, fr, ar`), each test case in the run is split into one **TestExecutionResult** row per combination. The Run Detail page renders a *Result per combination* matrix for the selected case:
+
+- Each row shows a combo label (e.g. `Android · Offline · fr`), a status pill, and pass/fail/blocked/skipped buttons.
+- **FAILED requires both a failure reason and an actual result** — the API rejects the save with `RESULT_FAILED_REQUIRES_REASON_AND_DETAILS` otherwise, and the cell stays red with a "needs reason & details" hint until both are filled.
+- A **Mark all passed** shortcut sets every remaining row to `PASSED` via `POST /execution-results/bulk` — the happy path for cases that work on every platform.
+- The case isn't considered done until every cell has a non-`PENDING` status; the parent `TestExecution.status` aggregates the children (`FAILED` if any failed, `BLOCKED` if any blocked, `PENDING` if any pending, else `PASSED`/`SKIPPED`).
+- The aggregate badge calls out the exact failing combos — so "passed on Windows, failed on Android" stays visible as `Failed on: Android · Offline`.
+
+Runs created *before* this feature have no result rows and fall back to the legacy single-status editor — they keep working unchanged.
+
 ### 3. Filing bugs
 
-On a failed execution, click **Create Jira bug**. The defect is filed with the full test context (steps, failure reason, tester, environment, run name) and linked back to the execution. The button is only enabled when the company has Jira credentials saved **and** the execution's project has a Jira binding.
+On a per-combo matrix, every failing cell has its own **Create Jira bug** button that opens one ticket per failing combination — `Android · Offline · en` files a separate ticket from `iOS · Online · fr`, so each bug has precise reproduction context. The ticket description pulls the combo-specific `failureReason` and `actualResult` (both are required before the save is accepted, so the ticket is never blank on arrival). Legacy single-status executions still use the old **Create Jira bug** button on the parent row.
+
+The button is only enabled when the company has Jira credentials saved **and** the execution's project has a Jira binding.
 
 ## Email verification, invites & password reset
 
@@ -324,12 +338,16 @@ Company
               ├── status (PENDING/IN_PROGRESS/COMPLETED/ARCHIVED)
               ├── environment, platforms[], connectivities[], locale, dueDate
               └── TestExecutions
-                    ├── status (PENDING/PASSED/FAILED/BLOCKED/SKIPPED)
-                    ├── failureReason, actualResult, durationMinutes
-                    ├── assignee
-                    ├── jiraIssueKey / jiraIssueUrl
-                    ├── Attachments
-                    └── Comments
+                    ├── status (aggregate — rolls up child TestExecutionResults)
+                    ├── failureReason / actualResult (legacy runs only; per-combo runs use results[])
+                    ├── assignee, durationMinutes
+                    ├── jiraIssueKey / jiraIssueUrl (legacy runs only)
+                    ├── Attachments, Comments
+                    └── TestExecutionResults (one per platform × connectivity × locale)
+                          ├── platform, connectivity, locale
+                          ├── status (PENDING/PASSED/FAILED/BLOCKED/SKIPPED)
+                          ├── failureReason, actualResult, notes (required when FAILED)
+                          └── jiraIssueKey / jiraIssueUrl (one bug per failing combo)
 ```
 
 Enums: `Role` (`MANAGER`, `TESTER`), `RunStatus` (`PENDING`/`IN_PROGRESS`/`COMPLETED`/`ARCHIVED`), `Priority` (`LOW`/`MEDIUM`/`HIGH`/`CRITICAL`), `TestLevel` (`SMOKE`/`SANITY`/`REGRESSION`/`ADVANCED`/`EXPLORATORY`), `Platform` (`WEB`/`WINDOWS`/`MACOS`/`ANDROID`/`IOS`), `Connectivity` (`ONLINE`/`OFFLINE`).
@@ -343,7 +361,7 @@ Enums: `Role` (`MANAGER`, `TESTER`), `RunStatus` (`PENDING`/`IN_PROGRESS`/`COMPL
 | Create/edit projects, suites, cases, milestones     | ✔     | ✔       | —                                         | —      |
 | Create test runs                                    | ✔     | ✔       | ✔                                         | —      |
 | Archive / restore test runs                         | ✔     | ✔       | —                                         | —      |
-| Execute tests (status, notes, duration, failure)    | ✔     | ✔       | ✔                                         | —      |
+| Execute tests (per-combo status, reason, actual result, notes, duration) | ✔     | ✔       | ✔                                         | —      |
 | Assign / reassign executions (single & bulk)        | ✔     | ✔       | ✔                                         | —      |
 | Add / remove / change roles of teammates            | ✔     | ✔       | —                                         | —      |
 | Lock / unlock users                                 | ✔     | ✔       | —                                         | —      |
@@ -469,13 +487,14 @@ All routes live under `/api`. Authentication is required except the public endpo
 | Cases             | `POST /cases` (mgr), `GET /cases/:id`, `PATCH/DELETE /cases/:id` (mgr), `POST /cases/:id/clone` (mgr)            |
 | Milestones        | `GET /milestones`, `POST /milestones` (mgr), `PATCH/DELETE /milestones/:id` (mgr)                                |
 | Runs              | `GET /runs`, `POST /runs` (mgr), `GET/PATCH/DELETE /runs/:id`, `GET /runs/:id/export.csv`                        |
-| Executions        | `GET /executions/:id`, `PATCH /executions/:id`, `POST /executions/bulk-assign`                                   |
+| Executions        | `GET /executions/:id`, `PATCH /executions/:id` (legacy runs only — per-combo runs must use `/execution-results/*`), `POST /executions/bulk-assign` |
+| Execution results | `PATCH /execution-results/:id`, `POST /execution-results/bulk` — per-combo status, failureReason, actualResult. `FAILED` requires both a reason and actual result. |
 | Attachments       | `POST /attachments` (multipart), `GET /attachments/:id/download`, `DELETE /attachments/:id`                      |
 | Comments          | `GET /comments?caseId\|executionId\|runId=…`, `POST /comments`, `DELETE /comments/:id`                           |
 | Jira (company)    | `GET/PUT/DELETE /jira/config` (PUT/DELETE mgr), `POST /jira/test`, `GET /jira/defaults/templates`                |
 | Jira (discover)   | `GET /jira/discover/projects`, `/jira/discover/issue-types`, `/jira/discover/epics`                              |
 | Jira (project)    | `GET /jira/projects/:id/binding`, `PUT /jira/projects/:id/binding` (mgr)                                         |
-| Jira (bugs)       | `POST /jira/executions/:id/create-bug`, `POST /jira/executions/:id/link`, `POST /jira/executions/:id/unlink`     |
+| Jira (bugs)       | `POST /jira/executions/:id/{create-bug,link,unlink}` (legacy) · `POST /jira/results/:id/{create-bug,link,unlink}` (per-combo — one ticket per failing platform × connectivity × locale) |
 | Matrix            | `GET /matrix/projects/:id?dimension=platform\|connectivity\|locale\|requirement`                                 |
 | Activity          | `GET /activity?projectId=…&entityType=…&entityId=…`                                                              |
 | Audit             | `GET /audit?userId=…&action=…&from=…&to=…&format=csv` (mgr)                                                      |
@@ -563,9 +582,11 @@ Each project can register outbound webhooks under **Project Settings → Webhook
 | `run.created`          | a test run is created                                                  |
 | `run.completed`        | a test run's status is set to `COMPLETED`                              |
 | `run.archived`         | a test run is archived                                                 |
-| `execution.passed`     | an execution transitions to `PASSED`                                   |
-| `execution.failed`     | an execution transitions to `FAILED`                                   |
-| `jira.bug_created`     | a Jira bug is auto-filed for a failed execution                        |
+| `execution.passed`     | a legacy (single-status) execution transitions to `PASSED`             |
+| `execution.failed`     | a legacy (single-status) execution transitions to `FAILED`             |
+| `execution_result.passed` | a per-combo result row transitions to `PASSED`                      |
+| `execution_result.failed` | a per-combo result row transitions to `FAILED`                      |
+| `jira.bug_created`     | a Jira bug is auto-filed (payload includes `resultId` when the bug was filed per combo) |
 
 Request body:
 

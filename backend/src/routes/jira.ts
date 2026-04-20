@@ -5,6 +5,7 @@ import { AuthedRequest, requireManager, requireWrite } from "../middleware/auth"
 import { httpError } from "../middleware/error";
 import {
   createJiraBugForExecution,
+  createJiraBugForResult,
   jiraFetch,
   DEFAULT_SUMMARY_TEMPLATE,
   DEFAULT_DESCRIPTION_TEMPLATE,
@@ -296,6 +297,92 @@ jiraRouter.post("/executions/:id/unlink", requireWrite, async (req: AuthedReques
       data: { jiraIssueKey: null, jiraIssueUrl: null },
     });
     req.log.info({ executionId: req.params.id, userId: req.user!.id }, "jira issue unlinked");
+    res.json(updated);
+  } catch (e) {
+    next(e);
+  }
+});
+
+// ---- Per-result bug creation / linking -----------------------------------
+
+async function assertAccessToResult(req: AuthedRequest, id: string) {
+  const result = await prisma.testExecutionResult.findUnique({
+    where: { id },
+    select: { executionId: true },
+  });
+  if (!result) throw httpError(404, "EXECUTION_RESULT_NOT_FOUND");
+  const allowed = await prisma.testExecution.findFirst({
+    where: executionWhere(req.user!, { id: result.executionId }),
+    select: { id: true },
+  });
+  if (!allowed) throw httpError(404, "EXECUTION_RESULT_NOT_FOUND");
+  return result;
+}
+
+jiraRouter.post("/results/:id/create-bug", requireWrite, async (req: AuthedRequest, res, next) => {
+  try {
+    await assertAccessToResult(req, req.params.id);
+    const updated = await createJiraBugForResult(req.params.id);
+    const result = await prisma.testExecutionResult.findUnique({
+      where: { id: req.params.id },
+      select: {
+        executionId: true,
+        platform: true,
+        connectivity: true,
+        locale: true,
+        execution: { select: { runId: true, caseId: true, run: { select: { projectId: true } } } },
+      },
+    });
+    if (result) {
+      dispatchWebhook({
+        projectId: result.execution.run.projectId,
+        event: "jira.bug_created",
+        payload: {
+          resultId: req.params.id,
+          executionId: result.executionId,
+          runId: result.execution.runId,
+          caseId: result.execution.caseId,
+          platform: result.platform,
+          connectivity: result.connectivity,
+          locale: result.locale,
+          jiraIssueKey: updated.jiraIssueKey,
+          jiraIssueUrl: updated.jiraIssueUrl,
+          createdBy: req.user!.id,
+        },
+      });
+    }
+    res.json({ jiraIssueKey: updated.jiraIssueKey, jiraIssueUrl: updated.jiraIssueUrl });
+  } catch (e) {
+    next(e);
+  }
+});
+
+jiraRouter.post("/results/:id/link", requireWrite, async (req: AuthedRequest, res, next) => {
+  try {
+    await assertAccessToResult(req, req.params.id);
+    const { jiraIssueKey } = linkSchema.parse(req.body);
+    const config = await prisma.jiraConfig.findUnique({ where: { companyId: req.user!.companyId } });
+    const base = config?.baseUrl.replace(/\/$/, "") ?? "";
+    const url = base ? `${base}/browse/${jiraIssueKey}` : "";
+    const updated = await prisma.testExecutionResult.update({
+      where: { id: req.params.id },
+      data: { jiraIssueKey, jiraIssueUrl: url },
+    });
+    logger.info({ resultId: req.params.id, jiraIssueKey }, "jira issue linked to result manually");
+    res.json({ jiraIssueKey: updated.jiraIssueKey, jiraIssueUrl: updated.jiraIssueUrl });
+  } catch (e) {
+    next(e);
+  }
+});
+
+jiraRouter.post("/results/:id/unlink", requireWrite, async (req: AuthedRequest, res, next) => {
+  try {
+    await assertAccessToResult(req, req.params.id);
+    const updated = await prisma.testExecutionResult.update({
+      where: { id: req.params.id },
+      data: { jiraIssueKey: null, jiraIssueUrl: null },
+    });
+    req.log.info({ resultId: req.params.id, userId: req.user!.id }, "jira issue unlinked from result");
     res.json(updated);
   } catch (e) {
     next(e);

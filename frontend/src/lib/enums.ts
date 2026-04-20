@@ -1,11 +1,9 @@
 export const TEST_LEVELS = ["SMOKE", "SANITY", "REGRESSION", "ADVANCED", "EXPLORATORY"] as const;
 export type TestLevel = (typeof TEST_LEVELS)[number];
 
-export const PLATFORMS = ["WEB", "WINDOWS", "MACOS", "ANDROID", "IOS"] as const;
-export type Platform = (typeof PLATFORMS)[number];
-
-export const CONNECTIVITY = ["ONLINE", "OFFLINE"] as const;
-export type Connectivity = (typeof CONNECTIVITY)[number];
+// Platforms, connectivities, and locales used to live here as hardcoded
+// constants. They are now per-company data — see lib/configOptions.ts and
+// the Company settings "Test run options" panel.
 
 export const testLevelColors: Record<TestLevel, string> = {
   SMOKE: "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300",

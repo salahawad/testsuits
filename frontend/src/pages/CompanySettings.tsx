@@ -8,6 +8,7 @@ import { logger } from "../lib/logger";
 import { PasswordInput } from "../components/PasswordInput";
 import { useConfirm } from "../components/ui/ConfirmDialog";
 import { Spinner } from "../components/Spinner";
+import { TestRunOptionsPanel } from "../components/TestRunOptionsPanel";
 
 type CompanyJiraConfig = {
   baseUrl: string;
@@ -224,6 +225,8 @@ export function CompanySettings() {
           )}
         </div>
       </form>
+
+      <TestRunOptionsPanel canEdit={!!isManager} />
     </div>
   );
 }

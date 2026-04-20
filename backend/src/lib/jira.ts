@@ -14,6 +14,7 @@ export const DEFAULT_DESCRIPTION_TEMPLATE = [
   "Suite: {{suiteName}}",
   "Test case: {{caseTitle}}",
   "Tester: {{tester}}",
+  "Failing combination: {{combo}}",
   "Platform: {{platform}}",
   "Connectivity: {{connectivity}}",
   "Locale: {{locale}}",
@@ -224,6 +225,7 @@ export async function createJiraBugForExecution(executionId: string) {
     platform: execution.run.platforms?.join(", ") || "—",
     connectivity: execution.run.connectivities?.join(", ") || "—",
     locale: execution.run.locale ?? "—",
+    combo: "—",
     tester: execution.executedBy?.name ?? "unknown",
     preconditions: execution.case.preconditions || "—",
     steps: stepsText || "—",
@@ -296,6 +298,163 @@ export async function createJiraBugForExecution(executionId: string) {
     });
   } catch (err) {
     logger.warn({ err, executionId }, "failed to log activity for Jira bug creation");
+  }
+
+  return updated;
+}
+
+/**
+ * Create a Jira bug for a specific failed TestExecutionResult (one combination
+ * of platform × connectivity × locale). The resulting ticket is scoped to that
+ * combo: summary and description reflect only the failing configuration, and
+ * the jiraIssueKey / jiraIssueUrl are stored on the result row (not the parent
+ * execution) so the tester can file one bug per failing cell.
+ */
+export async function createJiraBugForResult(resultId: string) {
+  const result = await prisma.testExecutionResult.findUnique({
+    where: { id: resultId },
+    include: {
+      execution: {
+        include: {
+          case: { include: { suite: { include: { project: { include: { company: { include: { jiraConfig: true } } } } } } } },
+          run: true,
+        },
+      },
+    },
+  });
+  if (!result) throw httpError(404, "EXECUTION_RESULT_NOT_FOUND");
+  if (result.jiraIssueKey) throw httpError(409, "JIRA_ISSUE_ALREADY_LINKED");
+  if (result.status !== "FAILED") throw httpError(400, "RESULT_NOT_FAILED");
+  if (!result.failureReason?.trim() || !result.actualResult?.trim()) {
+    throw httpError(400, "RESULT_FAILED_REQUIRES_REASON_AND_DETAILS");
+  }
+
+  const executedBy = result.executedById
+    ? await prisma.user.findUnique({ where: { id: result.executedById }, select: { name: true, email: true } })
+    : null;
+
+  const execution = result.execution;
+  const project = execution.case.suite.project;
+  const config = project.company.jiraConfig;
+  if (!config || !config.enabled) throw httpError(400, "JIRA_NOT_CONFIGURED");
+  if (!project.jiraProjectKey) throw httpError(400, "JIRA_PROJECT_NOT_SET");
+
+  const stepsText = (execution.case.steps as Array<{ action: string; expected: string }>)
+    .map((s, i) => `${i + 1}. ${s.action}\n   *Expected:* ${s.expected}`)
+    .join("\n");
+
+  const executionUrl = `${appUrl}/runs/${execution.run.id}`;
+  const comboLabel = [result.platform, result.connectivity, result.locale]
+    .filter((v) => !!v)
+    .join(" · ") || "—";
+
+  const vars: Record<string, string> = {
+    caseTitle: execution.case.title,
+    suiteName: execution.case.suite.name,
+    projectName: project.name,
+    projectKey: project.key,
+    runName: execution.run.name,
+    environment: execution.run.environment ?? "—",
+    platform: result.platform ?? "—",
+    connectivity: result.connectivity ?? "—",
+    locale: result.locale || "—",
+    combo: comboLabel,
+    tester: executedBy?.name ?? "unknown",
+    preconditions: execution.case.preconditions || "—",
+    steps: stepsText || "—",
+    failureReason: result.failureReason || result.notes || "—",
+    actualResult: result.actualResult || "—",
+    executionUrl,
+  };
+
+  const summary = render(config.summaryTemplate ?? DEFAULT_SUMMARY_TEMPLATE, vars).slice(0, 250);
+  const description = render(config.descriptionTemplate ?? DEFAULT_DESCRIPTION_TEMPLATE, vars);
+
+  const fields: Record<string, unknown> = {
+    project: { key: project.jiraProjectKey },
+    summary,
+    issuetype: { name: project.jiraIssueType || config.defaultIssueType || "Bug" },
+    description: mdToAdf(description),
+    labels: ["testsuits", "auto-created"],
+  };
+  if (project.jiraParentEpicKey) {
+    fields.parent = { key: project.jiraParentEpicKey };
+  }
+
+  logger.info(
+    {
+      resultId,
+      executionId: execution.id,
+      platform: result.platform,
+      connectivity: result.connectivity,
+      locale: result.locale,
+      jiraProject: project.jiraProjectKey,
+    },
+    "creating jira bug for execution result",
+  );
+
+  const data = await jiraFetch<{ key: string; self: string }>(
+    config,
+    "/rest/api/3/issue",
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fields }) },
+  );
+
+  const issueUrl = `${config.baseUrl.replace(/\/$/, "")}/browse/${data.key}`;
+  const updated = await prisma.testExecutionResult.update({
+    where: { id: resultId },
+    data: { jiraIssueKey: data.key, jiraIssueUrl: issueUrl },
+  });
+
+  try {
+    await jiraFetch(config, `/rest/api/3/issue/${data.key}/remotelink`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        globalId: `testsuits:result:${resultId}`,
+        application: { type: "com.testsuits", name: "TestSuits" },
+        relationship: "tested by",
+        object: {
+          url: executionUrl,
+          title: `${execution.case.title} — ${execution.run.name} (${comboLabel})`,
+          icon: { url16x16: `${appUrl}/favicon.svg`, title: "TestSuits" },
+        },
+      }),
+    });
+  } catch (e) {
+    logger.warn({ jiraKey: data.key, err: (e as Error).message }, "failed to create jira remote link for result");
+  }
+
+  logger.info(
+    {
+      resultId,
+      executionId: execution.id,
+      jiraKey: data.key,
+      combo: comboLabel,
+      parentEpic: project.jiraParentEpicKey,
+    },
+    "jira bug created for execution result",
+  );
+
+  try {
+    const { logActivity } = await import("./activity");
+    await logActivity({
+      projectId: execution.case.suite.projectId,
+      userId: result.executedById ?? null,
+      action: "JIRA_LINKED",
+      entityType: "executionResult",
+      entityId: resultId,
+      payload: {
+        issueKey: data.key,
+        auto: true,
+        combo: comboLabel,
+        platform: result.platform,
+        connectivity: result.connectivity,
+        locale: result.locale || null,
+        parentEpic: project.jiraParentEpicKey ?? null,
+      },
+    });
+  } catch (err) {
+    logger.warn({ err, resultId }, "failed to log activity for Jira result bug creation");
   }
 
   return updated;

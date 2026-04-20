@@ -116,6 +116,12 @@
     "JIRA_PROJECT_KEY_REQUIRED": "La clé du projet Jira est requise.",
     "JIRA_ISSUE_ALREADY_LINKED": "Un ticket Jira est déjà lié à cette exécution.",
     "EXECUTION_NOT_FAILED": "L'exécution doit être en échec pour créer un bug Jira.",
+    "EXECUTION_RESULT_NOT_FOUND": "Ligne de résultat introuvable.",
+    "RESULT_NOT_FAILED": "Le résultat doit être en échec pour créer un bug Jira.",
+    "RESULT_FAILED_REQUIRES_REASON_AND_DETAILS": "Renseignez la raison de l'échec et le résultat réel avant de marquer cette combinaison comme échouée.",
+    "USE_RESULT_ENDPOINT_FOR_STATUS": "Cette campagne suit le statut par combinaison — mettez à jour chaque ligne individuellement.",
+    "UNKNOWN_CONFIG_OPTION": "Une des options sélectionnées n'est pas disponible pour votre entreprise. Actualisez puis réessayez.",
+    "CONFIG_OPTION_NOT_FOUND": "Option introuvable.",
     "JIRA_REQUEST_FAILED": "Échec de la requête Jira.",
     "JIRA_PROJECT_NOT_SET": "Ce projet n'a pas de cible Jira — configurez-la dans les paramètres.",
     "USER_NOT_FOUND": "Utilisateur introuvable.",
@@ -217,6 +223,7 @@
     "title": "Projets",
     "subtitle": "Regroupez vos suites de tests par produit ou composant.",
     "new_project": "Nouveau projet",
+    "back_to_projects": "Retour aux projets",
     "key": "Clé",
     "suites_count": "{{count}} suites",
     "runs_count": "{{count}} exécutions",
@@ -282,6 +289,8 @@
     "title": "Exécutions",
     "subtitle": "Exécutez les cas de test et suivez les résultats.",
     "new_run": "Nouvelle exécution",
+    "back_to_runs": "Retour aux exécutions",
+    "no_options_configured": "Aucune option — ajoutez-en dans les paramètres de l'entreprise.",
     "project": "Projet",
     "select_project": "Sélectionner un projet…",
     "run_name": "Nom de l'exécution",
@@ -332,7 +341,19 @@
     "cases_count": "{{count}} cas",
     "by_user": "par {{name}}",
     "due_on": "échéance {{date}}",
-    "file_info": "{{size}} Ko · par {{name}}"
+    "file_info": "{{size}} Ko · par {{name}}",
+    "matrix": {
+      "title": "Résultat par combinaison",
+      "default_combo": "Par défaut",
+      "progress": "{{done}} sur {{total}} testées",
+      "all_passed": "{{count}} combinaison(s) réussies",
+      "failed_on": "En échec sur : {{combos}}",
+      "summary": "{{passed}} réussies · {{failed}} en échec · {{pending}} en attente · {{total}} au total",
+      "mark_all_passed": "Tout marquer réussi",
+      "mark_all_passed_hint": "Passer toutes les lignes restantes à « Réussi ».",
+      "all_passed_saved": "Toutes les combinaisons marquées réussies.",
+      "needs_reason_details": "Ajoutez la raison et le résultat réel pour enregistrer cet échec."
+    }
   },
   "milestones": {
     "title": "Jalons",
@@ -534,6 +555,31 @@
     "settings_title": "Paramètres de l'entreprise",
     "settings_subtitle": "La configuration Jira et les modèles s'appliquent à tous les projets de cette entreprise."
   },
+  "run_options": {
+    "title": "Options de campagnes de test",
+    "subtitle": "Plateformes, connectivités et langues proposées lors de la création d'une campagne. Les options supprimées sont soft-deleted afin que les campagnes existantes conservent leurs libellés.",
+    "kind": {
+      "PLATFORM": "Plateformes",
+      "CONNECTIVITY": "Connectivité",
+      "LOCALE": "Langues"
+    },
+    "empty": "Aucune option pour l'instant.",
+    "show_deleted": "Afficher les supprimées",
+    "remove": "Supprimer",
+    "restore": "Restaurer",
+    "add_new": "Nouvelle option",
+    "add_button": "Ajouter",
+    "code_label": "Code (stocké sur les campagnes — non modifiable)",
+    "label_label": "Libellé (affiché dans l'interface)",
+    "code_hint": "ex. {{example}}",
+    "label_hint": "ex. {{example}}",
+    "code_placeholder": "Code (ex. LINUX)",
+    "label_placeholder": "Libellé (ex. Linux)",
+    "added": "Option ajoutée.",
+    "removed": "Option supprimée — les campagnes existantes conservent leur libellé.",
+    "restored": "Option restaurée.",
+    "confirm_remove": "Supprimer « {{label}} » ? Les campagnes existantes la conservent ; les nouvelles ne la proposeront plus."
+  },
   "sso": {
     "title": "SSO & Provisioning",
     "subtitle": "Configurez l'authentification unique SAML et le provisioning SCIM pour cette entreprise.",
@@ -606,7 +652,6 @@
     "any": "Toutes",
     "WEB": "Web",
     "WINDOWS": "Windows",
-    "MACOS": "macOS",
     "ANDROID": "Android",
     "IOS": "iOS"
   },
@@ -618,7 +663,13 @@
   },
   "locale": {
     "label": "Langue",
-    "placeholder": "ex. fr, en, ar"
+    "placeholder": "ex. fr, en",
+    "en": "Anglais",
+    "fr": "Français",
+    "es": "Espagnol",
+    "pl": "Polonais",
+    "hu": "Hongrois",
+    "de": "Allemand"
   },
   "requirement": {
     "label": "Exigence",

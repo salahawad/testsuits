@@ -1,4 +1,4 @@
-import { PrismaClient, Priority, TestLevel, Platform, Connectivity } from "@prisma/client";
+import { PrismaClient, Priority, TestLevel } from "@prisma/client";
 import bcrypt from "bcryptjs";
 import { randomBytes, createHash } from "crypto";
 
@@ -399,8 +399,9 @@ async function seedRunsForCheckout(projectId: string, managerId: string, testerI
       name: "Smoke — Chrome / Prod",
       description: "Release-candidate smoke pass for checkout on Chrome, production environment.",
       environment: "Chrome 120 / Prod",
-      platform: "WEB",
-      connectivity: "ONLINE",
+      platforms: ["WEB"],
+      connectivities: ["ONLINE"],
+      locales: ["en"],
       locale: "en",
       status: "COMPLETED",
       createdById: managerId,
@@ -431,8 +432,9 @@ async function seedRunsForCheckout(projectId: string, managerId: string, testerI
       name: "Regression — iOS / Staging",
       description: "Full cart + payment regression on iOS Safari, staging.",
       environment: "iOS 17 / Staging",
-      platform: "IOS",
-      connectivity: "ONLINE",
+      platforms: ["IOS"],
+      connectivities: ["ONLINE"],
+      locales: ["en"],
       locale: "en",
       dueDate: new Date(Date.now() + 3 * 24 * 3600 * 1000),
       status: "IN_PROGRESS",
@@ -487,8 +489,9 @@ async function seedRunsForCheckout(projectId: string, managerId: string, testerI
       name: "Offline pass — Android / Staging / en",
       description: "Offline behaviour of the cart, Android Chrome.",
       environment: "Android 14 / Staging",
-      platform: "ANDROID",
-      connectivity: "OFFLINE",
+      platforms: ["ANDROID"],
+      connectivities: ["OFFLINE"],
+      locales: ["en"],
       locale: "en",
       status: "COMPLETED",
       createdById: managerId,
@@ -520,8 +523,9 @@ async function seedRunsForCheckout(projectId: string, managerId: string, testerI
       name: "Smoke — Windows / fr",
       description: "French-locale smoke pass on Windows / Edge.",
       environment: "Windows 11 / Edge / Prod",
-      platform: "WINDOWS",
-      connectivity: "ONLINE",
+      platforms: ["WINDOWS"],
+      connectivities: ["ONLINE"],
+      locales: ["fr"],
       locale: "fr",
       status: "IN_PROGRESS",
       createdById: managerId,
@@ -618,8 +622,8 @@ async function seedProjectBasics(opts: {
   runName: string;
   runDescription: string;
   environment: string;
-  platform: Platform;
-  connectivity: Connectivity;
+  platform: string;
+  connectivity: string;
   locale: string;
   failureReason?: string;
   jiraIssueKey?: string;
@@ -658,8 +662,9 @@ async function seedProjectBasics(opts: {
       name: runName,
       description: runDescription,
       environment: opts.environment,
-      platform: opts.platform,
-      connectivity: opts.connectivity,
+      platforms: [opts.platform],
+      connectivities: [opts.connectivity],
+      locales: [opts.locale],
       locale: opts.locale,
       status: "IN_PROGRESS",
       createdById: managerId,

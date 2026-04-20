@@ -8,6 +8,7 @@ import { AuthedRequest, requireAuth, requireManager, signChallengeToken, signTok
 import { httpError } from "../middleware/error";
 import { logger } from "../lib/logger";
 import { appUrl, sendEmail } from "../lib/mailer";
+import { ensureDefaultOptions } from "../lib/testConfig";
 
 const RESET_TTL_MS = 60 * 60 * 1000;              // 1 hour
 const INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;    // 7 days
@@ -238,6 +239,7 @@ authRouter.post("/signup", signupLimiter, async (req, res, next) => {
           // emailVerifiedAt intentionally null — user must verify via email.
         },
       });
+      await ensureDefaultOptions(company.id, tx);
       return { user, company };
     });
 

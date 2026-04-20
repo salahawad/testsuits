@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { FolderTree, Plus } from "lucide-react";
+import { ArrowLeft, FolderTree, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -72,6 +72,12 @@ export function ProjectDetail() {
     <div className="space-y-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
+          <Link
+            to="/projects"
+            className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 mb-2"
+          >
+            <ArrowLeft size={12} /> {t("projects.back_to_projects")}
+          </Link>
           <div className="text-xs font-semibold text-brand-600 mb-1">{project.key}</div>
           <h1 className="text-2xl font-bold">{project.name}</h1>
           {project.description && <p className="text-sm text-slate-500 mt-1">{project.description}</p>}

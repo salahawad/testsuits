@@ -68,114 +68,131 @@ enum TestLevel {
   EXPLORATORY
 }
 
-enum Platform {
-  WEB
-  WINDOWS
-  MACOS
-  ANDROID
-  IOS
-}
-
-enum Connectivity {
-  ONLINE
-  OFFLINE
+// Platforms, connectivities, and locales are stored as free-form strings so
+// each company can curate its own options via TestConfigOption. The former
+// `Platform` / `Connectivity` Prisma enums were dropped in favour of this.
+enum TestConfigKind {
+  PLATFORM
+  CONNECTIVITY
+  LOCALE
 }
 
 model Company {
-  id          String        @id @default(cuid())
-  name        String
-  slug        String        @unique
-  createdAt   DateTime      @default(now())
-  users       User[]
-  projects    Project[]
-  jiraConfig  JiraConfig?
-  invites     InviteToken[]
-  samlConfig  SamlConfig?
-  scimTokens  ScimToken[]
+  id            String              @id @default(cuid())
+  name          String
+  slug          String              @unique
+  createdAt     DateTime            @default(now())
+  users         User[]
+  projects      Project[]
+  jiraConfig    JiraConfig?
+  invites       InviteToken[]
+  samlConfig    SamlConfig?
+  scimTokens    ScimToken[]
+  configOptions TestConfigOption[]
+}
+
+// Company-scoped list of run parameter options (platforms, connectivities,
+// locales). Soft-deleted (`deletedAt` non-null) so historical runs that
+// reference an option can still render its label after removal.
+model TestConfigOption {
+  id        String         @id @default(cuid())
+  companyId String
+  company   Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  kind      TestConfigKind
+  code      String
+  label     String
+  sortOrder Int            @default(0)
+  deletedAt DateTime?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  @@unique([companyId, kind, code])
+  @@index([companyId, kind, deletedAt])
 }
 
 model SamlConfig {
-  id               String   @id @default(cuid())
-  companyId        String   @unique
-  company          Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  entityId         String
-  ssoUrl           String
-  x509Cert         String
-  emailAttribute   String   @default("email")
-  nameAttribute    String   @default("name")
-  defaultRole      Role     @default(TESTER)
-  enabled          Boolean  @default(false)
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id             String   @id @default(cuid())
+  companyId      String   @unique
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  entityId       String
+  ssoUrl         String
+  x509Cert       String
+  emailAttribute String   @default("email")
+  nameAttribute  String   @default("name")
+  defaultRole    Role     @default(TESTER)
+  enabled        Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
 
 model ScimToken {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   companyId  String
-  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company    Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
   name       String
-  tokenHash  String   @unique
+  tokenHash  String    @unique
   lastUsedAt DateTime?
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
+
   @@index([companyId])
 }
 
 model User {
-  id              String               @id @default(cuid())
-  email           String               @unique
-  name            String
-  passwordHash    String
+  id                String                   @id @default(cuid())
+  email             String                   @unique
+  name              String
+  passwordHash      String
   // Bumped on password change / forced sign-out. Any JWT with iat < this value
   // is treated as revoked, even if not yet expired.
   passwordUpdatedAt DateTime?
-  emailVerifiedAt DateTime?
-  avatarKey       String?
-  failedAttempts  Int                  @default(0)
-  lockedUntil     DateTime?
+  emailVerifiedAt   DateTime?
+  avatarKey         String?
+  failedAttempts    Int                      @default(0)
+  lockedUntil       DateTime?
   // Manager-imposed lock — prevents login and API access entirely.
-  isLocked        Boolean              @default(false)
-  lastLoginAt     DateTime?
+  isLocked          Boolean                  @default(false)
+  lastLoginAt       DateTime?
   // TOTP two-factor authentication (opt-in per user).
-  totpSecret      String?
-  totpEnabledAt   DateTime?
-  role            Role                 @default(TESTER)
-  companyId       String
-  company         Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  createdAt       DateTime             @default(now())
-  runs            TestRun[]
-  executions      TestExecution[]
-  assignedExecs   TestExecution[]      @relation("ExecAssignee")
-  attachments     Attachment[]
-  comments        Comment[]
-  activities      ActivityLog[]
-  apiTokens       ApiToken[]
-  sharedSteps     SharedStep[]
-  resetTokens     PasswordResetToken[]
+  totpSecret        String?
+  totpEnabledAt     DateTime?
+  role              Role                     @default(TESTER)
+  companyId         String
+  company           Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt         DateTime                 @default(now())
+  runs              TestRun[]
+  executions        TestExecution[]
+  assignedExecs     TestExecution[]          @relation("ExecAssignee")
+  attachments       Attachment[]
+  comments          Comment[]
+  activities        ActivityLog[]
+  apiTokens         ApiToken[]
+  sharedSteps       SharedStep[]
+  resetTokens       PasswordResetToken[]
   emailVerifyTokens EmailVerificationToken[]
-  trustedDevices  TrustedDevice[]
-  sentInvites     InviteToken[]        @relation("InvitedBy")
+  trustedDevices    TrustedDevice[]
+  sentInvites       InviteToken[]            @relation("InvitedBy")
 }
 
 model PasswordResetToken {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash String   @unique
-  expiresAt DateTime
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  expiresAt  DateTime
   consumedAt DateTime?
-  createdAt DateTime @default(now())
+  createdAt  DateTime  @default(now())
 
   @@index([userId, expiresAt])
 }
 
 model EmailVerificationToken {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  tokenHash String   @unique
-  expiresAt DateTime
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash  String    @unique
+  expiresAt  DateTime
   consumedAt DateTime?
-  createdAt DateTime @default(now())
+  createdAt  DateTime  @default(now())
 
   @@index([userId, expiresAt])
 }
@@ -192,30 +209,30 @@ model TrustedDevice {
 }
 
 model InviteToken {
-  id           String    @id @default(cuid())
-  companyId    String
-  company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  email        String
-  name         String
-  role         Role
-  tokenHash    String    @unique
-  expiresAt    DateTime
-  invitedById  String
-  invitedBy    User      @relation("InvitedBy", fields: [invitedById], references: [id])
-  acceptedAt   DateTime?
-  createdAt    DateTime  @default(now())
+  id          String    @id @default(cuid())
+  companyId   String
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  email       String
+  name        String
+  role        Role
+  tokenHash   String    @unique
+  expiresAt   DateTime
+  invitedById String
+  invitedBy   User      @relation("InvitedBy", fields: [invitedById], references: [id])
+  acceptedAt  DateTime?
+  createdAt   DateTime  @default(now())
 
   @@index([companyId, email])
 }
 
 model ApiToken {
-  id        String   @id @default(cuid())
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name      String
-  tokenHash String   @unique
+  id         String    @id @default(cuid())
+  userId     String
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name       String
+  tokenHash  String    @unique
   lastUsedAt DateTime?
-  createdAt DateTime @default(now())
+  createdAt  DateTime  @default(now())
 }
 
 model Project {
@@ -306,34 +323,34 @@ model TestSuite {
 }
 
 model TestCase {
-  id               String          @id @default(cuid())
-  suiteId          String
-  suite            TestSuite       @relation(fields: [suiteId], references: [id], onDelete: Cascade)
-  title            String
-  preconditions    String?
-  priority         Priority        @default(MEDIUM)
-  testLevel        TestLevel       @default(REGRESSION)
-  tags             String[]        @default([])
-  steps            Json            @default("[]")
-  estimatedMinutes Int?
-  requirements     String[]        @default([])
-  customFieldValues Json           @default("{}")
-  cloneOfId        String?
-  cloneOf          TestCase?       @relation("CaseClone", fields: [cloneOfId], references: [id])
-  clones           TestCase[]      @relation("CaseClone")
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
-  executions       TestExecution[]
-  attachments      Attachment[]
-  comments         Comment[]
-  requirementLinks Requirement[]   @relation("CaseRequirements")
-  revisions        TestCaseRevision[]
+  id                String             @id @default(cuid())
+  suiteId           String
+  suite             TestSuite          @relation(fields: [suiteId], references: [id], onDelete: Cascade)
+  title             String
+  preconditions     String?
+  priority          Priority           @default(MEDIUM)
+  testLevel         TestLevel          @default(REGRESSION)
+  tags              String[]           @default([])
+  steps             Json               @default("[]")
+  estimatedMinutes  Int?
+  requirements      String[]           @default([])
+  customFieldValues Json               @default("{}")
+  cloneOfId         String?
+  cloneOf           TestCase?          @relation("CaseClone", fields: [cloneOfId], references: [id])
+  clones            TestCase[]         @relation("CaseClone")
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  executions        TestExecution[]
+  attachments       Attachment[]
+  comments          Comment[]
+  requirementLinks  Requirement[]      @relation("CaseRequirements")
+  revisions         TestCaseRevision[]
 }
 
 model TestCaseRevision {
-  id                String   @id @default(cuid())
+  id                String    @id @default(cuid())
   caseId            String
-  case              TestCase @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  case              TestCase  @relation(fields: [caseId], references: [id], onDelete: Cascade)
   version           Int
   title             String
   preconditions     String?
@@ -345,56 +362,93 @@ model TestCaseRevision {
   requirements      String[]
   customFieldValues Json
   authorId          String?
-  createdAt         DateTime @default(now())
+  createdAt         DateTime  @default(now())
+
   @@unique([caseId, version])
   @@index([caseId, createdAt])
 }
 
 model TestRun {
-  id           String          @id @default(cuid())
-  projectId    String
-  project      Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  milestoneId  String?
-  milestone    Milestone?      @relation(fields: [milestoneId], references: [id])
-  name         String
-  description  String?
-  environment  String?
-  platforms    Platform[]
-  connectivities Connectivity[]
-  locale       String?
-  dueDate      DateTime?
-  status       RunStatus       @default(IN_PROGRESS)
-  createdById  String
-  createdBy    User            @relation(fields: [createdById], references: [id])
-  createdAt    DateTime        @default(now())
-  completedAt  DateTime?
-  executions   TestExecution[]
-  comments     Comment[]
+  id             String          @id @default(cuid())
+  projectId      String
+  project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  milestoneId    String?
+  milestone      Milestone?      @relation(fields: [milestoneId], references: [id])
+  name           String
+  description    String?
+  environment    String?
+  // Stores whatever codes the caller selected (e.g. "WEB", "WINDOWS", or a
+  // company-custom value like "LINUX"). Validated at write time against the
+  // company's active TestConfigOption rows, not at the database level — so a
+  // run keeps its history even if an option is later soft-deleted.
+  platforms      String[]       @default([])
+  connectivities String[]       @default([])
+  // Multi-select locale codes (e.g. ["en", "fr"]). The legacy comma-separated
+  // `locale` string is still present for pre-migration runs — new code reads
+  // `locales` first and falls back to parsing `locale`.
+  locales        String[]       @default([])
+  locale         String?
+  dueDate        DateTime?
+  status         RunStatus       @default(IN_PROGRESS)
+  createdById    String
+  createdBy      User            @relation(fields: [createdById], references: [id])
+  createdAt      DateTime        @default(now())
+  completedAt    DateTime?
+  executions     TestExecution[]
+  comments       Comment[]
 }
 
 model TestExecution {
-  id              String       @id @default(cuid())
+  id              String                @id @default(cuid())
   runId           String
-  run             TestRun      @relation(fields: [runId], references: [id], onDelete: Cascade)
+  run             TestRun               @relation(fields: [runId], references: [id], onDelete: Cascade)
   caseId          String
-  case            TestCase     @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  status          ExecStatus   @default(PENDING)
+  case            TestCase              @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  // Aggregate status — rolls up the child TestExecutionResult rows. Computed
+  // server-side on every result write. For runs created before the per-combo
+  // model, `results` may be empty and this status is the sole source of truth.
+  status          ExecStatus            @default(PENDING)
   notes           String?
   failureReason   String?
   actualResult    String?
   durationMinutes Int?
   assigneeId      String?
-  assignee        User?        @relation("ExecAssignee", fields: [assigneeId], references: [id])
+  assignee        User?                 @relation("ExecAssignee", fields: [assigneeId], references: [id])
   jiraIssueKey    String?
   jiraIssueUrl    String?
   executedById    String?
-  executedBy      User?        @relation(fields: [executedById], references: [id])
+  executedBy      User?                 @relation(fields: [executedById], references: [id])
   executedAt      DateTime?
-  createdAt       DateTime     @default(now())
+  createdAt       DateTime              @default(now())
   attachments     Attachment[]
   comments        Comment[]
+  results         TestExecutionResult[]
 
   @@unique([runId, caseId])
+}
+
+// Per-combination result for a single TestExecution. One row per
+// (platform × connectivity × locale) combination derived from the parent
+// TestRun's arrays at creation time. Legacy executions have zero rows.
+model TestExecutionResult {
+  id            String        @id @default(cuid())
+  executionId   String
+  execution     TestExecution @relation(fields: [executionId], references: [id], onDelete: Cascade)
+  platform      String?
+  connectivity  String?
+  locale        String        @default("")
+  status        ExecStatus    @default(PENDING)
+  failureReason String?
+  actualResult  String?
+  notes         String?
+  jiraIssueKey  String?
+  jiraIssueUrl  String?
+  executedById  String?
+  executedAt    DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([executionId])
 }
 
 model Attachment {

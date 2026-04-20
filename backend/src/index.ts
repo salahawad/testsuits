@@ -1,6 +1,7 @@
 import { app } from "./app";
 import { logger } from "./lib/logger";
 import { startAuthTokenSweep } from "./lib/cleanup";
+import { backfillDefaultOptionsForAllCompanies } from "./lib/testConfig";
 import { prisma } from "./db";
 
 const port = Number(process.env.PORT ?? 4000);
@@ -9,6 +10,11 @@ const SHUTDOWN_TIMEOUT_MS = Number(process.env.SHUTDOWN_TIMEOUT_MS ?? 15_000);
 const server = app.listen(port, () => {
   logger.info({ port }, "API listening");
   startAuthTokenSweep();
+  // One-shot backfill: every company has the default platform/connectivity/
+  // locale options. Idempotent, so harmless to run on every boot.
+  backfillDefaultOptionsForAllCompanies().catch((err) =>
+    logger.error({ err }, "test config option backfill failed"),
+  );
 });
 
 // ---------------------------------------------------------------------------

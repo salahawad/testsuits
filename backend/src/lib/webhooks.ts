@@ -8,6 +8,8 @@ export const WEBHOOK_EVENTS = [
   "run.archived",
   "execution.failed",
   "execution.passed",
+  "execution_result.failed",
+  "execution_result.passed",
   "jira.bug_created",
 ] as const;
 export type WebhookEvent = typeof WEBHOOK_EVENTS[number];

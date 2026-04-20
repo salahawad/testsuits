@@ -7,11 +7,9 @@ import { caseWhere, projectWhere, runWhere, suiteWhere } from "../middleware/sco
 import { logActivity } from "../lib/activity";
 import { dispatchWebhook } from "../lib/webhooks";
 import { logger } from "../lib/logger";
+import { buildCombos } from "../lib/executionResults";
 
 export const runsRouter = Router();
-
-const PLATFORMS = ["WEB", "WINDOWS", "MACOS", "ANDROID", "IOS"] as const;
-const CONNECTIVITY = ["ONLINE", "OFFLINE"] as const;
 
 const createSchema = z.object({
   projectId: z.string(),
@@ -19,8 +17,12 @@ const createSchema = z.object({
   name: z.string().trim().min(1, "Run name is required"),
   description: z.string().optional().nullable(),
   environment: z.string().trim().min(1, "Environment is required"),
-  platforms: z.array(z.enum(PLATFORMS)).optional(),
-  connectivities: z.array(z.enum(CONNECTIVITY)).optional(),
+  // Platforms / connectivities / locales are free-form strings validated
+  // against the caller's TestConfigOption rows — not against a Prisma enum,
+  // so each company can add its own values.
+  platforms: z.array(z.string().trim().min(1)).optional(),
+  connectivities: z.array(z.string().trim().min(1)).optional(),
+  locales: z.array(z.string().trim().min(1)).optional(),
   locale: z.string().optional().nullable(),
   testLevels: z.array(z.enum(["SMOKE", "SANITY", "REGRESSION", "ADVANCED", "EXPLORATORY"])).optional(),
   dueDate: z.string().datetime().optional().nullable(),
@@ -28,6 +30,28 @@ const createSchema = z.object({
   suiteIds: z.array(z.string()).optional(),
   assigneeId: z.string().optional().nullable(),
 });
+
+/**
+ * Confirm every selected code exists in the caller's company as an active
+ * TestConfigOption of the right kind. Prevents tenants from writing options
+ * they don't own (or from picking soft-deleted ones from a stale client).
+ */
+async function assertKnownOptions(
+  companyId: string,
+  kind: "PLATFORM" | "CONNECTIVITY" | "LOCALE",
+  codes: string[] | undefined,
+): Promise<void> {
+  if (!codes || codes.length === 0) return;
+  const known = await prisma.testConfigOption.findMany({
+    where: { companyId, kind, deletedAt: null, code: { in: codes } },
+    select: { code: true },
+  });
+  const knownSet = new Set(known.map((k) => k.code));
+  const missing = codes.filter((c) => !knownSet.has(c));
+  if (missing.length) {
+    throw httpError(400, "UNKNOWN_CONFIG_OPTION");
+  }
+}
 
 runsRouter.get("/", async (req: AuthedRequest, res, next) => {
   try {
@@ -85,6 +109,19 @@ runsRouter.post("/", requireWrite, async (req: AuthedRequest, res, next) => {
       if (!assignee) throw httpError(400, "ASSIGNEE_NOT_IN_COMPANY");
     }
 
+    await Promise.all([
+      assertKnownOptions(req.user!.companyId, "PLATFORM", data.platforms),
+      assertKnownOptions(req.user!.companyId, "CONNECTIVITY", data.connectivities),
+      assertKnownOptions(req.user!.companyId, "LOCALE", data.locales),
+    ]);
+
+    const combos = buildCombos(
+      data.platforms ?? [],
+      data.connectivities ?? [],
+      data.locales ?? [],
+      data.locale ?? null,
+    );
+
     const run = await prisma.testRun.create({
       data: {
         projectId: data.projectId,
@@ -94,19 +131,39 @@ runsRouter.post("/", requireWrite, async (req: AuthedRequest, res, next) => {
         environment: data.environment,
         platforms: data.platforms ?? [],
         connectivities: data.connectivities ?? [],
-        locale: data.locale ?? null,
+        locales: data.locales ?? [],
+        // Keep the legacy comma-separated mirror in sync so older clients,
+        // webhook consumers, and matrix reports that still read `locale`
+        // don't see an empty field when a tester picked locales from the UI.
+        locale: data.locales?.length ? data.locales.join(", ") : (data.locale ?? null),
         dueDate: data.dueDate ? new Date(data.dueDate) : null,
         createdById: req.user!.id,
         executions: {
           create: Array.from(caseIds).map((caseId) => ({
             caseId,
             assigneeId: data.assigneeId ?? null,
+            results: {
+              create: combos.map((c) => ({
+                platform: c.platform,
+                connectivity: c.connectivity,
+                locale: c.locale,
+              })),
+            },
           })),
         },
       },
     });
 
-    req.log.info({ runId: run.id, projectId: data.projectId, userId: req.user!.id, caseCount: caseIds.size }, "run created");
+    req.log.info(
+      {
+        runId: run.id,
+        projectId: data.projectId,
+        userId: req.user!.id,
+        caseCount: caseIds.size,
+        comboCount: combos.length,
+      },
+      "run created",
+    );
 
     await logActivity({
       projectId: run.projectId,
@@ -147,6 +204,7 @@ runsRouter.get("/:id", async (req: AuthedRequest, res, next) => {
             case: { include: { suite: true } },
             executedBy: { select: { id: true, name: true } },
             assignee: { select: { id: true, name: true } },
+            results: { orderBy: { createdAt: "asc" } },
           },
         },
       },
@@ -169,13 +227,20 @@ runsRouter.patch("/:id", requireManager, async (req: AuthedRequest, res, next) =
   try {
     const owned = await prisma.testRun.findFirst({ where: runWhere(req.user!, { id: req.params.id }), select: { id: true, projectId: true, status: true, name: true } });
     if (!owned) throw httpError(404, "RUN_NOT_FOUND");
+    const body = req.body as { platforms?: string[]; connectivities?: string[]; locales?: string[] };
+    await Promise.all([
+      assertKnownOptions(req.user!.companyId, "PLATFORM", body.platforms),
+      assertKnownOptions(req.user!.companyId, "CONNECTIVITY", body.connectivities),
+      assertKnownOptions(req.user!.companyId, "LOCALE", body.locales),
+    ]);
     const data = z
       .object({
         name: z.string().trim().min(1, "Run name cannot be empty").optional(),
         description: z.string().optional().nullable(),
         environment: z.string().optional().nullable(),
-        platforms: z.array(z.enum(PLATFORMS)).optional(),
-        connectivities: z.array(z.enum(CONNECTIVITY)).optional(),
+        platforms: z.array(z.string().trim().min(1)).optional(),
+        connectivities: z.array(z.string().trim().min(1)).optional(),
+        locales: z.array(z.string().trim().min(1)).optional(),
         locale: z.string().optional().nullable(),
         milestoneId: z.string().optional().nullable(),
         dueDate: z.string().datetime().optional().nullable(),
@@ -186,6 +251,12 @@ runsRouter.patch("/:id", requireManager, async (req: AuthedRequest, res, next) =
       where: { id: req.params.id },
       data: {
         ...data,
+        // Mirror a multi-select locale change into the legacy scalar so the
+        // CSV export, older clients, and the execution results the tester
+        // keeps editing see the same values.
+        locale: data.locales
+          ? (data.locales.length ? data.locales.join(", ") : null)
+          : data.locale,
         dueDate: data.dueDate ? new Date(data.dueDate) : data.dueDate === null ? null : undefined,
         completedAt: data.status === "COMPLETED" ? new Date() : undefined,
       },

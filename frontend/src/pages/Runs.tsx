@@ -8,7 +8,8 @@ import { z } from "zod";
 import { api } from "../lib/api";
 import { runStatusColors } from "../lib/status";
 import { Badge } from "../components/ui/Badge";
-import { CONNECTIVITY, PLATFORMS, TEST_LEVELS } from "../lib/enums";
+import { TEST_LEVELS } from "../lib/enums";
+import { activeOf, makeLabelLookup, useConfigOptions } from "../lib/configOptions";
 import { logger } from "../lib/logger";
 import { useAuth } from "../lib/auth";
 import { useConfirm } from "../components/ui/ConfirmDialog";
@@ -24,7 +25,6 @@ const schema = z.object({
   name: nonEmpty("Run name"),
   milestoneId: z.string().optional(),
   environment: nonEmpty("Environment"),
-  locale: z.string().optional(),
   dueDate: z.string().optional(),
   description: z.string().optional(),
   assigneeId: z.string().optional(),
@@ -47,6 +47,7 @@ export function Runs() {
   const [selectedSuiteIds, setSelectedSuiteIds] = useState<string[]>([]);
   const [selectedPlatforms, setSelectedPlatforms] = useState<string[]>([]);
   const [selectedConnectivities, setSelectedConnectivities] = useState<string[]>([]);
+  const [selectedLocales, setSelectedLocales] = useState<string[]>([]);
   const [testLevels, setTestLevels] = useState<string[]>([]);
   const [suiteError, setSuiteError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -57,7 +58,6 @@ export function Runs() {
       name: "",
       milestoneId: "",
       environment: "",
-      locale: "",
       dueDate: "",
       description: "",
       assigneeId: !isManager && user?.id ? user.id : "",
@@ -97,6 +97,16 @@ export function Runs() {
     queryFn: async () => (await api.get("/users")).data,
   });
 
+  // Company-scoped run parameter options. Active rows drive the checkboxes
+  // below; deleted rows are kept so historical runs still render real labels.
+  const { data: configOptions = [] } = useConfigOptions();
+  const activePlatforms = activeOf(configOptions, "PLATFORM");
+  const activeConnectivities = activeOf(configOptions, "CONNECTIVITY");
+  const activeLocales = activeOf(configOptions, "LOCALE");
+  const platformLabel = makeLabelLookup(configOptions, "PLATFORM");
+  const connectivityLabel = makeLabelLookup(configOptions, "CONNECTIVITY");
+  const localeLabel = makeLabelLookup(configOptions, "LOCALE");
+
   const create = useMutation({
     mutationFn: async (values: Values) =>
       (await api.post("/runs", {
@@ -107,7 +117,7 @@ export function Runs() {
         environment: values.environment,
         platforms: selectedPlatforms.length ? selectedPlatforms : undefined,
         connectivities: selectedConnectivities.length ? selectedConnectivities : undefined,
-        locale: values.locale || null,
+        locales: selectedLocales.length ? selectedLocales : undefined,
         testLevels: testLevels.length ? testLevels : undefined,
         dueDate: values.dueDate ? new Date(values.dueDate).toISOString() : null,
         suiteIds: selectedSuiteIds,
@@ -118,7 +128,7 @@ export function Runs() {
         runId: run.id,
         platforms: selectedPlatforms,
         connectivities: selectedConnectivities,
-        locale: form.getValues("locale"),
+        locales: selectedLocales,
         levels: testLevels,
       });
       toast.success(t("common.saved"));
@@ -129,7 +139,6 @@ export function Runs() {
         name: "",
         milestoneId: "",
         environment: "",
-        locale: "",
         dueDate: "",
         description: "",
         assigneeId: !isManager && user?.id ? user.id : "",
@@ -137,6 +146,7 @@ export function Runs() {
       setSelectedSuiteIds([]);
       setSelectedPlatforms([]);
       setSelectedConnectivities([]);
+      setSelectedLocales([]);
       setTestLevels([]);
       setSuiteError(null);
       setSubmitError(null);
@@ -169,7 +179,6 @@ export function Runs() {
       name: "",
       milestoneId: "",
       environment: "",
-      locale: "",
       dueDate: "",
       description: "",
       assigneeId: !isManager && user?.id ? user.id : "",
@@ -177,6 +186,7 @@ export function Runs() {
     setSelectedSuiteIds([]);
     setSelectedPlatforms([]);
     setSelectedConnectivities([]);
+    setSelectedLocales([]);
     setTestLevels([]);
     setSuiteError(null);
     setSubmitError(null);
@@ -337,14 +347,15 @@ export function Runs() {
             <div>
               <label className="label">{t("platform.label")}</label>
               <div className="flex gap-2 flex-wrap">
-                {PLATFORMS.map((p) => (
-                  <label key={p} className="flex items-center gap-1 text-xs">
+                {activePlatforms.length === 0 && <span className="text-xs text-slate-500">{t("runs.no_options_configured")}</span>}
+                {activePlatforms.map((p) => (
+                  <label key={p.code} className="flex items-center gap-1 text-xs">
                     <input
                       type="checkbox"
-                      checked={selectedPlatforms.includes(p)}
-                      onChange={() => setSelectedPlatforms((xs) => xs.includes(p) ? xs.filter((x) => x !== p) : [...xs, p])}
+                      checked={selectedPlatforms.includes(p.code)}
+                      onChange={() => setSelectedPlatforms((xs) => xs.includes(p.code) ? xs.filter((x) => x !== p.code) : [...xs, p.code])}
                     />
-                    {t(`platform.${p}`)}
+                    {p.label}
                   </label>
                 ))}
               </div>
@@ -352,21 +363,35 @@ export function Runs() {
             <div>
               <label className="label">{t("connectivity.label")}</label>
               <div className="flex gap-2 flex-wrap">
-                {CONNECTIVITY.map((c) => (
-                  <label key={c} className="flex items-center gap-1 text-xs">
+                {activeConnectivities.length === 0 && <span className="text-xs text-slate-500">{t("runs.no_options_configured")}</span>}
+                {activeConnectivities.map((c) => (
+                  <label key={c.code} className="flex items-center gap-1 text-xs">
                     <input
                       type="checkbox"
-                      checked={selectedConnectivities.includes(c)}
-                      onChange={() => setSelectedConnectivities((xs) => xs.includes(c) ? xs.filter((x) => x !== c) : [...xs, c])}
+                      checked={selectedConnectivities.includes(c.code)}
+                      onChange={() => setSelectedConnectivities((xs) => xs.includes(c.code) ? xs.filter((x) => x !== c.code) : [...xs, c.code])}
                     />
-                    {t(`connectivity.${c}`)}
+                    {c.label}
                   </label>
                 ))}
               </div>
             </div>
-            <Field name="locale" label={t("locale.label")} error={form.formState.errors.locale?.message}>
-              <input className="input" placeholder={t("locale.placeholder")} {...form.register("locale")} />
-            </Field>
+            <div>
+              <label className="label">{t("locale.label")}</label>
+              <div className="flex gap-2 flex-wrap">
+                {activeLocales.length === 0 && <span className="text-xs text-slate-500">{t("runs.no_options_configured")}</span>}
+                {activeLocales.map((l) => (
+                  <label key={l.code} className="flex items-center gap-1 text-xs">
+                    <input
+                      type="checkbox"
+                      checked={selectedLocales.includes(l.code)}
+                      onChange={() => setSelectedLocales((xs) => xs.includes(l.code) ? xs.filter((x) => x !== l.code) : [...xs, l.code])}
+                    />
+                    {l.label}
+                  </label>
+                ))}
+              </div>
+            </div>
           </div>
           <div>
             <label className="label">{t("test_level.filter_by")}</label>
@@ -432,7 +457,7 @@ export function Runs() {
         <div className="card divide-y divide-slate-100 dark:divide-slate-800">
           {runs.map((r: {
             id: string; name: string; project: { name: string }; milestone?: { name: string };
-            platforms?: string[]; connectivities?: string[]; locale?: string; environment?: string;
+            platforms?: string[]; connectivities?: string[]; locales?: string[]; locale?: string; environment?: string;
             _count: { executions: number }; createdBy: { name: string }; dueDate?: string; status: string;
           }) => (
             <div key={r.id} className="flex items-center justify-between px-5 py-3">
@@ -462,7 +487,7 @@ export function Runs() {
         <div className="card divide-y divide-slate-100 dark:divide-slate-800">
           {runs.map((r: {
             id: string; name: string; project: { name: string }; milestone?: { name: string };
-            platforms?: string[]; connectivities?: string[]; locale?: string; environment?: string;
+            platforms?: string[]; connectivities?: string[]; locales?: string[]; locale?: string; environment?: string;
             _count: { executions: number }; createdBy: { name: string }; dueDate?: string; status: string;
           }) => (
             <div key={r.id} className="flex items-center justify-between px-5 py-3 hover:bg-slate-50 dark:hover:bg-slate-800">
@@ -471,9 +496,12 @@ export function Runs() {
                 <div className="text-xs text-slate-500 flex items-center gap-2 flex-wrap">
                   <span>{r.project.name}</span>
                   {r.milestone && <Badge tone="violet">{r.milestone.name}</Badge>}
-                  {r.platforms?.map((p) => <Badge key={p} tone="info">{t(`platform.${p}`)}</Badge>)}
-                  {r.connectivities?.map((c) => <Badge key={c} tone="success">{t(`connectivity.${c}`)}</Badge>)}
-                  {r.locale && <Badge tone="rose">{r.locale}</Badge>}
+                  {r.platforms?.map((p) => <Badge key={p} tone="info">{platformLabel(p)}</Badge>)}
+                  {r.connectivities?.map((c) => <Badge key={c} tone="success">{connectivityLabel(c)}</Badge>)}
+                  {(r.locales?.length
+                    ? r.locales
+                    : r.locale ? r.locale.split(",").map((l) => l.trim()).filter(Boolean) : []
+                  ).map((l) => <Badge key={l} tone="rose">{localeLabel(l)}</Badge>)}
                   {r.environment && <Badge tone="neutral">{r.environment}</Badge>}
                   <span>{t("runs.cases_count", { count: r._count.executions })}</span>
                   <span>{t("runs.by_user", { name: r.createdBy.name })}</span>

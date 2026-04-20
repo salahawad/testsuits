@@ -85,16 +85,18 @@ api.interceptors.response.use(
     }
 
     if (!shouldSuppressToast(error)) {
+      const translate = (key: string) => t(`errors.${key}`, { defaultValue: key });
       if (status === 403) {
-        const msg = error.response.data?.error || t("errors.forbidden");
-        toast.error(msg);
+        const code = error.response.data?.error;
+        toast.error(code ? translate(code) : t("errors.forbidden"));
       } else if (status && status >= 500) {
         toast.error(t("errors.server"));
       } else if (status && status >= 400) {
-        // 4xx with a server-sent message (validation, 409, 404): show that
-        // message if present; otherwise stay silent and let the caller decide.
-        const msg = error.response.data?.error;
-        if (msg) toast.error(msg);
+        // 4xx with a server-sent machine key (validation, 409, 404): translate
+        // via errors.* and fall back to the raw key so nothing is silently
+        // dropped if a translation is missing.
+        const code = error.response.data?.error;
+        if (code) toast.error(translate(code));
       }
     }
     return Promise.reject(error);

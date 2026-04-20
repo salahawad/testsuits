@@ -1,8 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import { ChangeEvent, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Upload, Download, Trash2, ExternalLink, Bug, FileDown, Link as LinkIcon, Archive, RotateCcw } from "lucide-react";
+import { Upload, Download, Trash2, ExternalLink, Bug, FileDown, Link as LinkIcon, Archive, RotateCcw, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "../lib/api";
 import { execStatusColors, runStatusColors } from "../lib/status";
@@ -11,6 +11,7 @@ import { Comments } from "../components/Comments";
 import { ActivityFeed } from "../components/ActivityFeed";
 import { PageLoader, Spinner } from "../components/Spinner";
 import { RichEditor } from "../components/RichEditor";
+import { RunResultMatrix } from "../components/RunResultMatrix";
 import { useAuth } from "../lib/auth";
 import { useConfirm } from "../components/ui/ConfirmDialog";
 import { logger } from "../lib/logger";
@@ -217,8 +218,14 @@ export function RunDetail() {
     <div className="space-y-6">
       <header className="flex items-start justify-between gap-4">
         <div>
+          <Link
+            to={`/runs?projectId=${run.projectId}`}
+            className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 mb-2"
+          >
+            <ArrowLeft size={12} /> {t("runs.back_to_runs")}
+          </Link>
           <div className="text-xs text-slate-500 mb-1 flex items-center gap-2 flex-wrap">
-            <span>{run.project.name}</span>
+            <Link to={`/runs?projectId=${run.projectId}`} className="hover:underline">{run.project.name}</Link>
             {run.milestone && <Badge tone="violet">{run.milestone.name}</Badge>}
             {run.environment && <Badge tone="neutral">{run.environment}</Badge>}
             {run.dueDate && <span>{t("runs.due_on", { date: new Date(run.dueDate).toLocaleDateString() })}</span>}
@@ -344,67 +351,98 @@ export function RunDetail() {
                 </div>
               </div>
 
-              <div className="card p-5 space-y-4">
-                <div>
-                  <div className="label">{t("runs.result")}</div>
-                  <div className="flex gap-2 flex-wrap">
-                    {STATUSES.filter((s) => s !== "PENDING").map((s) => (
-                      <button
-                        key={s}
-                        className={`btn ${execution.status === s ? (s === "PASSED" ? "bg-emerald-600 text-white" : s === "FAILED" ? "bg-red-600 text-white" : "bg-brand-600 text-white dark:bg-brand-500") : "bg-white border border-slate-300 dark:border-slate-700 text-slate-700 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-700 dark:hover:bg-slate-800"}`}
-                        onClick={() => updateExec.mutate({ status: s })}
-                        disabled={updateExec.isPending}
-                      >
-                        {s}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div>
-                  <label className="label">{t("runs.actual_result")}</label>
-                  <RichEditor
-                    value={actualResult}
-                    onChange={setActualResult}
-                    placeholder={t("runs.actual_placeholder")}
-                    minHeight={72}
+              {execution.results && execution.results.length > 0 ? (
+                <>
+                  <RunResultMatrix
+                    executionId={execution.id}
+                    runId={run.id}
+                    results={execution.results}
+                    jiraReady={jiraReady}
                   />
-                </div>
-
-                {execution.status === "FAILED" && (
-                  <div>
-                    <label className="label">{t("runs.why_failed")}</label>
-                    <RichEditor
-                      value={failureReason}
-                      onChange={setFailureReason}
-                      placeholder={t("runs.why_failed_placeholder")}
-                      minHeight={96}
-                    />
+                  <div className="card p-5 space-y-3">
+                    <div className="grid grid-cols-[1fr_140px] gap-3">
+                      <div>
+                        <label className="label">{t("runs.notes")}</label>
+                        <textarea className="input" rows={2} value={notes}
+                          onChange={(e) => setNotes(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="label">{t("runs.duration_minutes")}</label>
+                        <input type="number" min={1} className="input" value={duration}
+                          onChange={(e) => setDuration(e.target.value)} />
+                      </div>
+                    </div>
+                    <div className="flex justify-end">
+                      <button className="btn-secondary" onClick={saveDetails} disabled={updateExec.isPending}>
+                        {updateExec.isPending && <Spinner size={14} className="text-slate-600" />}
+                        {t("runs.save_details")}
+                      </button>
+                    </div>
                   </div>
-                )}
+                </>
+              ) : (
+                <>
+                  <div className="card p-5 space-y-4">
+                    <div>
+                      <div className="label">{t("runs.result")}</div>
+                      <div className="flex gap-2 flex-wrap">
+                        {STATUSES.filter((s) => s !== "PENDING").map((s) => (
+                          <button
+                            key={s}
+                            className={`btn ${execution.status === s ? (s === "PASSED" ? "bg-emerald-600 text-white" : s === "FAILED" ? "bg-red-600 text-white" : "bg-brand-600 text-white dark:bg-brand-500") : "bg-white border border-slate-300 dark:border-slate-700 text-slate-700 hover:bg-slate-50 dark:bg-slate-900 dark:text-slate-200 dark:border-slate-700 dark:hover:bg-slate-800"}`}
+                            onClick={() => updateExec.mutate({ status: s })}
+                            disabled={updateExec.isPending}
+                          >
+                            {s}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
 
-                <div className="grid grid-cols-[1fr_140px] gap-3">
-                  <div>
-                    <label className="label">{t("runs.notes")}</label>
-                    <textarea className="input" rows={2} value={notes}
-                      onChange={(e) => setNotes(e.target.value)} />
+                    <div>
+                      <label className="label">{t("runs.actual_result")}</label>
+                      <RichEditor
+                        value={actualResult}
+                        onChange={setActualResult}
+                        placeholder={t("runs.actual_placeholder")}
+                        minHeight={72}
+                      />
+                    </div>
+
+                    {execution.status === "FAILED" && (
+                      <div>
+                        <label className="label">{t("runs.why_failed")}</label>
+                        <RichEditor
+                          value={failureReason}
+                          onChange={setFailureReason}
+                          placeholder={t("runs.why_failed_placeholder")}
+                          minHeight={96}
+                        />
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-[1fr_140px] gap-3">
+                      <div>
+                        <label className="label">{t("runs.notes")}</label>
+                        <textarea className="input" rows={2} value={notes}
+                          onChange={(e) => setNotes(e.target.value)} />
+                      </div>
+                      <div>
+                        <label className="label">{t("runs.duration_minutes")}</label>
+                        <input type="number" min={1} className="input" value={duration}
+                          onChange={(e) => setDuration(e.target.value)} />
+                      </div>
+                    </div>
+
+                    <div className="flex justify-end">
+                      <button className="btn-secondary" onClick={saveDetails} disabled={updateExec.isPending}>
+                        {updateExec.isPending && <Spinner size={14} className="text-slate-600" />}
+                        {t("runs.save_details")}
+                      </button>
+                    </div>
                   </div>
-                  <div>
-                    <label className="label">{t("runs.duration_minutes")}</label>
-                    <input type="number" min={1} className="input" value={duration}
-                      onChange={(e) => setDuration(e.target.value)} />
-                  </div>
-                </div>
 
-                <div className="flex justify-end">
-                  <button className="btn-secondary" onClick={saveDetails} disabled={updateExec.isPending}>
-                    {updateExec.isPending && <Spinner size={14} className="text-slate-600" />}
-                    {t("runs.save_details")}
-                  </button>
-                </div>
-              </div>
-
-              {execution.status === "FAILED" && (
+                  {execution.status === "FAILED" && (
                 <div className="card p-5 space-y-3">
                   <div className="flex items-center justify-between">
                     <h3 className="font-semibold flex items-center gap-2"><Bug size={16} /> {t("jira.title")}</h3>
@@ -459,6 +497,8 @@ export function RunDetail() {
                   )}
                   {jiraErr && <div className="text-sm text-red-600">{jiraErr}</div>}
                 </div>
+                  )}
+                </>
               )}
 
               <div className="card p-5">
