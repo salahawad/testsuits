@@ -10,6 +10,11 @@ jobs:
   backend:
     name: Backend — typecheck + prisma validate
     runs-on: ubuntu-latest
+    env:
+      # Prisma 5.22's WASM schema validator reads env("DATABASE_URL") even for
+      # pure offline validation. No database is contacted — the URL just has
+      # to parse. The real test DB lives in the backend-tests job below.
+      DATABASE_URL: postgresql://unused:unused@localhost:5432/unused
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
