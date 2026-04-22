@@ -264,7 +264,7 @@ async function assertAccessToExecution(req: AuthedRequest, id: string) {
 jiraRouter.post("/executions/:id/create-bug", requireWrite, async (req: AuthedRequest, res, next) => {
   try {
     await assertAccessToExecution(req, req.params.id);
-    const updated = await createJiraBugForExecution(req.params.id);
+    const updated = await createJiraBugForExecution(req.params.id, req.user!.id);
     const exec = await prisma.testExecution.findUnique({
       where: { id: req.params.id },
       select: { runId: true, caseId: true, run: { select: { projectId: true } } },
@@ -342,7 +342,7 @@ async function assertAccessToResult(req: AuthedRequest, id: string) {
 jiraRouter.post("/results/:id/create-bug", requireWrite, async (req: AuthedRequest, res, next) => {
   try {
     await assertAccessToResult(req, req.params.id);
-    const updated = await createJiraBugForResult(req.params.id);
+    const updated = await createJiraBugForResult(req.params.id, req.user!.id);
     const result = await prisma.testExecutionResult.findUnique({
       where: { id: req.params.id },
       select: {

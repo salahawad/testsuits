@@ -392,6 +392,9 @@
     "bug_created": "Jira bug created.",
     "linked": "Jira issue linked.",
     "unlinked": "Jira issue unlinked.",
+    "unlinked_key": "Unlinked {{key}}. Paste it in the link box to restore.",
+    "unlink_confirm": "Unlink {{key}}?",
+    "unlink_confirm_body": "This only removes the link from TestSuits — the Jira ticket stays. You can paste the key in the link box to restore.",
     "config_removed": "Jira configuration removed.",
     "clear_binding": "Clear binding",
     "use_company_default": "Use company default ({{type}})"

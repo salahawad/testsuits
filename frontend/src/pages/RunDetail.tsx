@@ -154,14 +154,27 @@ export function RunDetail() {
   });
 
   const unlinkBug = useMutation({
-    mutationFn: async () => (await api.post(`/jira/executions/${selected}/unlink`)).data,
-    onSuccess: () => {
-      logger.info("jira issue unlinked", { executionId: selected });
+    mutationFn: async (key: string) => {
+      const data = (await api.post(`/jira/executions/${selected}/unlink`)).data;
+      return { ...data, unlinkedKey: key };
+    },
+    onSuccess: (data: { unlinkedKey: string }) => {
+      logger.info("jira issue unlinked", { executionId: selected, key: data.unlinkedKey });
       qc.invalidateQueries({ queryKey: ["execution", selected] });
       qc.invalidateQueries({ queryKey: ["run", id] });
-      toast.success(t("jira.unlinked"));
+      toast.success(t("jira.unlinked_key", { key: data.unlinkedKey }));
     },
   });
+
+  async function onUnlinkExecution() {
+    if (!execution?.jiraIssueKey) return;
+    const confirmed = await confirmDialog({
+      title: t("jira.unlink_confirm", { key: execution.jiraIssueKey }),
+      body: t("jira.unlink_confirm_body"),
+      tone: "warning",
+    });
+    if (confirmed) unlinkBug.mutate(execution.jiraIssueKey);
+  }
 
   async function onDownload(attId: string) {
     try {
@@ -454,7 +467,7 @@ export function RunDetail() {
                         </a>
                         <button
                           className="btn-secondary text-red-600"
-                          onClick={() => unlinkBug.mutate()}
+                          onClick={onUnlinkExecution}
                           disabled={unlinkBug.isPending}
                         >
                           {unlinkBug.isPending && <Spinner size={14} className="text-red-600" />}

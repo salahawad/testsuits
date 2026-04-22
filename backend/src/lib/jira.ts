@@ -169,6 +169,30 @@ function render(template: string, vars: Record<string, string>): string {
   return template.replace(/\{\{\s*(\w+)\s*\}\}/g, (_, key) => vars[key] ?? "—");
 }
 
+/**
+ * Resolve the Jira accountId of the token owner (the email configured in
+ * JiraConfig.email). Cached per process for the lifetime of the pod so we
+ * don't hit /myself on every bug creation. Used as a fallback reporter when
+ * the tester hasn't linked their own Jira account on their profile.
+ */
+const tokenOwnerAccountCache = new Map<string, string>();
+async function getTokenOwnerAccountId(config: { baseUrl: string; email: string; apiToken: string }): Promise<string | null> {
+  const key = `${config.baseUrl.replace(/\/$/, "")}|${config.email}`;
+  const hit = tokenOwnerAccountCache.get(key);
+  if (hit) return hit;
+  try {
+    const me = await jiraFetch<{ accountId?: string }>(config, "/rest/api/3/myself");
+    if (me.accountId) {
+      tokenOwnerAccountCache.set(key, me.accountId);
+      return me.accountId;
+    }
+    return null;
+  } catch (err) {
+    logger.warn({ err: (err as Error).message }, "failed to resolve Jira token owner accountId");
+    return null;
+  }
+}
+
 export async function jiraFetch<T>(
   config: { baseUrl: string; email: string; apiToken: string },
   path: string,
@@ -191,7 +215,7 @@ export async function jiraFetch<T>(
   return resp.json() as Promise<T>;
 }
 
-export async function createJiraBugForExecution(executionId: string) {
+export async function createJiraBugForExecution(executionId: string, callerUserId?: string) {
   const execution = await prisma.testExecution.findUnique({
     where: { id: executionId },
     include: {
@@ -200,6 +224,16 @@ export async function createJiraBugForExecution(executionId: string) {
       executedBy: { select: { name: true, email: true, jiraAccountId: true } },
     },
   });
+  // Reporter = the caller (whoever clicked Create Bug). Fall back to the
+  // historical tester (executedBy) so that Jira reporter still works for
+  // background/workflow jobs that don't have a caller user id.
+  const caller = callerUserId
+    ? await prisma.user.findUnique({
+        where: { id: callerUserId },
+        select: { name: true, email: true, jiraAccountId: true },
+      })
+    : null;
+  const reporter = caller ?? execution?.executedBy ?? null;
   if (!execution) throw httpError(404, "EXECUTION_NOT_FOUND");
   if (execution.jiraIssueKey) throw httpError(409, "JIRA_ISSUE_ALREADY_LINKED");
   if (execution.status !== "FAILED") throw httpError(400, "EXECUTION_NOT_FAILED");
@@ -251,9 +285,29 @@ export async function createJiraBugForExecution(executionId: string) {
   // under that accountId so Jira shows them as reporter instead of the API
   // token's service account. Missing / unlinked → Jira defaults to the token
   // owner (company-wide Jira service account).
-  if (execution.executedBy?.jiraAccountId) {
-    fields.reporter = { accountId: execution.executedBy.jiraAccountId };
+  let reporterAccountId: string | null = reporter?.jiraAccountId ?? null;
+  let reporterSource: "caller" | "historicalTester" | "tokenOwner" | "none" =
+    caller ? "caller" : execution.executedBy ? "historicalTester" : "none";
+  if (!reporterAccountId) {
+    // Fall back to the Jira service-account user (the email used to
+    // configure the Jira connection) so every ticket has a meaningful
+    // reporter even when the tester hasn't linked their Jira profile.
+    reporterAccountId = await getTokenOwnerAccountId(config);
+    if (reporterAccountId) reporterSource = "tokenOwner";
   }
+  if (reporterAccountId) fields.reporter = { accountId: reporterAccountId };
+
+  logger.info(
+    {
+      executionId,
+      callerUserId: callerUserId ?? null,
+      reporterAccountId,
+      reporterSource,
+      reporterSet: !!fields.reporter,
+      jiraProject: project.jiraProjectKey,
+    },
+    "jira bug payload (execution)",
+  );
 
   const data = await jiraFetch<{ key: string; self: string }>(
     config,
@@ -317,7 +371,7 @@ export async function createJiraBugForExecution(executionId: string) {
  * the jiraIssueKey / jiraIssueUrl are stored on the result row (not the parent
  * execution) so the tester can file one bug per failing cell.
  */
-export async function createJiraBugForResult(resultId: string) {
+export async function createJiraBugForResult(resultId: string, callerUserId?: string) {
   const result = await prisma.testExecutionResult.findUnique({
     where: { id: resultId },
     include: {
@@ -342,6 +396,15 @@ export async function createJiraBugForResult(resultId: string) {
         select: { name: true, email: true, jiraAccountId: true },
       })
     : null;
+  // Reporter = caller (Create Bug click) when available, else the historical
+  // tester that marked the combo FAILED.
+  const caller = callerUserId
+    ? await prisma.user.findUnique({
+        where: { id: callerUserId },
+        select: { name: true, email: true, jiraAccountId: true },
+      })
+    : null;
+  const reporter = caller ?? executedBy;
 
   const execution = result.execution;
   const project = execution.case.suite.project;
@@ -390,14 +453,23 @@ export async function createJiraBugForResult(resultId: string) {
   if (project.jiraParentEpicKey) {
     fields.parent = { key: project.jiraParentEpicKey };
   }
-  if (executedBy?.jiraAccountId) {
-    fields.reporter = { accountId: executedBy.jiraAccountId };
+  let reporterAccountId: string | null = reporter?.jiraAccountId ?? null;
+  let reporterSource: "caller" | "historicalTester" | "tokenOwner" | "none" =
+    caller ? "caller" : executedBy ? "historicalTester" : "none";
+  if (!reporterAccountId) {
+    reporterAccountId = await getTokenOwnerAccountId(config);
+    if (reporterAccountId) reporterSource = "tokenOwner";
   }
+  if (reporterAccountId) fields.reporter = { accountId: reporterAccountId };
 
   logger.info(
     {
       resultId,
       executionId: execution.id,
+      callerUserId: callerUserId ?? null,
+      reporterAccountId,
+      reporterSource,
+      reporterSet: !!fields.reporter,
       platform: result.platform,
       connectivity: result.connectivity,
       locale: result.locale,

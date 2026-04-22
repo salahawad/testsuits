@@ -9,6 +9,7 @@ import { Badge } from "./ui/Badge";
 import { Spinner } from "./Spinner";
 import { logger } from "../lib/logger";
 import { makeLabelLookup, useConfigOptions } from "../lib/configOptions";
+import { useConfirm } from "./ui/ConfirmDialog";
 
 type Status = "PENDING" | "PASSED" | "FAILED" | "BLOCKED" | "SKIPPED";
 const STATUSES: Status[] = ["PASSED", "FAILED", "BLOCKED", "SKIPPED"];
@@ -141,16 +142,27 @@ export function RunResultMatrix({ executionId, runId, results, jiraReady }: Prop
     },
   });
 
+  const confirmDialog = useConfirm();
   const unlinkBug = useMutation({
-    mutationFn: async (resultId: string) =>
+    mutationFn: async ({ resultId }: { resultId: string; key: string }) =>
       (await api.post(`/jira/results/${resultId}/unlink`)).data,
-    onSuccess: (_data, resultId) => {
-      logger.info("jira issue unlinked from result", { resultId });
+    onSuccess: (_data, vars) => {
+      logger.info("jira issue unlinked from result", { resultId: vars.resultId, key: vars.key });
       qc.invalidateQueries({ queryKey: ["run", runId] });
       qc.invalidateQueries({ queryKey: ["execution", executionId] });
-      toast.success(t("jira.unlinked"));
+      toast.success(t("jira.unlinked_key", { key: vars.key }));
     },
   });
+
+  async function onUnlinkRow(r: ResultRow) {
+    if (!r.jiraIssueKey) return;
+    const confirmed = await confirmDialog({
+      title: t("jira.unlink_confirm", { key: r.jiraIssueKey }),
+      body: t("jira.unlink_confirm_body"),
+      tone: "warning",
+    });
+    if (confirmed) unlinkBug.mutate({ resultId: r.id, key: r.jiraIssueKey });
+  }
 
   function onSetStatus(r: ResultRow, status: Status) {
     const draft = getDraft(r);
@@ -351,8 +363,8 @@ export function RunResultMatrix({ executionId, runId, results, jiraReady }: Prop
                     <div>
                       <button
                         className="btn-secondary text-red-600"
-                        onClick={() => unlinkBug.mutate(r.id)}
-                        disabled={unlinkBug.isPending && unlinkBug.variables === r.id}
+                        onClick={() => onUnlinkRow(r)}
+                        disabled={unlinkBug.isPending && unlinkBug.variables?.resultId === r.id}
                       >
                         {t("jira.unlink")}
                       </button>
