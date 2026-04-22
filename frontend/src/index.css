@@ -6,6 +6,21 @@ html, body, #root {
   height: 100%;
 }
 
+html {
+  color-scheme: light;
+}
+html.dark {
+  color-scheme: dark;
+}
+html.dark select {
+  background-color: rgb(15 23 42); /* slate-900 */
+  color: rgb(226 232 240); /* slate-200 */
+}
+html.dark option {
+  background-color: rgb(15 23 42); /* slate-900 */
+  color: rgb(226 232 240); /* slate-200 */
+}
+
 body {
   @apply bg-slate-50 text-slate-900 antialiased;
   @apply dark:bg-slate-950 dark:text-slate-100;

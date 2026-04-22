@@ -186,6 +186,8 @@ twoFactorRouter.post("/authenticate", authLimiter, async (req, res, next) => {
         email: user.email,
         name: user.name,
         role: user.role,
+        jiraAccountId: user.jiraAccountId,
+        jiraDisplayName: user.jiraDisplayName,
         company: { id: user.company.id, name: user.company.name, slug: user.company.slug },
       },
       ...(trustToken ? { trustToken } : {}),

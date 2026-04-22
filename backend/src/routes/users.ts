@@ -38,6 +38,8 @@ usersRouter.get("/me", async (req: AuthedRequest, res, next) => {
       email: me.email,
       role: me.role,
       hasAvatar: !!me.avatarKey,
+      jiraAccountId: me.jiraAccountId,
+      jiraDisplayName: me.jiraDisplayName,
       company: { id: me.company.id, name: me.company.name, slug: me.company.slug },
     });
   } catch (e) {
@@ -48,18 +50,34 @@ usersRouter.get("/me", async (req: AuthedRequest, res, next) => {
 // --- Self-service profile endpoints -----------------------------------------
 
 const profileSchema = z.object({
-  name: z.string().min(1).max(120),
+  name: z.string().min(1).max(120).optional(),
+  // Jira link: either both fields or both null (clears the link). Updating
+  // only one side would leave the user in a half-linked state where bugs
+  // file with an unknown display name or none at all.
+  jiraAccountId: z.string().trim().min(1).max(200).nullable().optional(),
+  jiraDisplayName: z.string().trim().min(1).max(200).nullable().optional(),
 });
 
 usersRouter.patch("/me", async (req: AuthedRequest, res, next) => {
   try {
-    const { name } = profileSchema.parse(req.body);
+    const data = profileSchema.parse(req.body);
+    const patch: Record<string, unknown> = {};
+    if (data.name !== undefined) patch.name = data.name;
+    if (data.jiraAccountId !== undefined) patch.jiraAccountId = data.jiraAccountId;
+    if (data.jiraDisplayName !== undefined) patch.jiraDisplayName = data.jiraDisplayName;
     const user = await prisma.user.update({
       where: { id: req.user!.id },
-      data: { name },
-      select: { id: true, name: true, email: true, role: true },
+      data: patch,
+      select: { id: true, name: true, email: true, role: true, jiraAccountId: true, jiraDisplayName: true },
     });
-    logger.info({ userId: user.id }, "profile updated");
+    req.log.info(
+      {
+        userId: user.id,
+        jiraLinkChanged: "jiraAccountId" in patch,
+        jiraLinked: !!user.jiraAccountId,
+      },
+      "profile updated",
+    );
     res.json(user);
   } catch (e) {
     next(e);

@@ -125,6 +125,26 @@ jiraRouter.get("/discover/issue-types", async (req: AuthedRequest, res, next) =>
   }
 });
 
+jiraRouter.get("/discover/users", async (req: AuthedRequest, res, next) => {
+  try {
+    const q = typeof req.query.q === "string" ? req.query.q.trim() : "";
+    if (!q) return res.json([]);
+    const config = await companyConfig(req.user!.companyId);
+    req.log.info({ companyId: req.user!.companyId, query: q }, "discovering jira users");
+    const data = await jiraFetch<Array<{ accountId: string; displayName: string; emailAddress?: string; active: boolean }>>(
+      config,
+      `/rest/api/3/user/search?query=${encodeURIComponent(q)}&maxResults=20`,
+    );
+    const users = data
+      .filter((u) => u.active)
+      .map((u) => ({ accountId: u.accountId, displayName: u.displayName, email: u.emailAddress ?? null }));
+    req.log.info({ companyId: req.user!.companyId, resultCount: users.length }, "jira users discovered");
+    res.json(users);
+  } catch (e) {
+    next(e);
+  }
+});
+
 jiraRouter.get("/discover/epics", async (req: AuthedRequest, res, next) => {
   try {
     const projectKey = typeof req.query.projectKey === "string" ? req.query.projectKey : undefined;

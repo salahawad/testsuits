@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { useMutation } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { z } from "zod";
-import { LogOut, Camera, Trash2, ShieldCheck, ShieldOff } from "lucide-react";
+import { LogOut, Camera, Trash2, ShieldCheck, ShieldOff, Search, X, Bug } from "lucide-react";
 import { api } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useZodForm } from "../lib/useZodForm";
@@ -264,6 +264,138 @@ function PasswordSection() {
   );
 }
 
+// --- Jira reporter link -----------------------------------------------------
+
+type JiraUser = { accountId: string; displayName: string; email: string | null };
+
+function JiraLinkSection() {
+  const { t } = useTranslation();
+  const { user, updateUser } = useAuth();
+  const [query, setQuery] = useState(user?.email ?? "");
+  const [results, setResults] = useState<JiraUser[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [searched, setSearched] = useState(false);
+
+  const search = useMutation({
+    mutationFn: async (q: string) =>
+      (await api.get("/jira/discover/users", { params: { q }, silent: true })).data as JiraUser[],
+    onSuccess: (data) => {
+      setResults(data);
+      setSearched(true);
+      setError(null);
+      logger.info("jira user search", { resultCount: data.length });
+    },
+    onError: (e) => {
+      setResults(null);
+      setError(apiErrorMessage(e, t("common.something_went_wrong")));
+    },
+  });
+
+  const saveLink = useMutation({
+    mutationFn: async (u: JiraUser | null) =>
+      (await api.patch(
+        "/users/me",
+        {
+          jiraAccountId: u?.accountId ?? null,
+          jiraDisplayName: u?.displayName ?? null,
+        },
+        { silent: true },
+      )).data,
+    onSuccess: (_data, variables) => {
+      updateUser({
+        jiraAccountId: variables?.accountId ?? null,
+        jiraDisplayName: variables?.displayName ?? null,
+      });
+      setError(null);
+      logger.info("jira profile link updated", { linked: !!variables });
+    },
+    onError: (e) => setError(apiErrorMessage(e, t("common.something_went_wrong"))),
+  });
+
+  const linked = !!user?.jiraAccountId;
+
+  return (
+    <section className="rounded-lg border border-slate-200 dark:border-slate-700 p-5">
+      <h2 className="text-base font-semibold mb-1 flex items-center gap-2">
+        <Bug size={16} /> {t("profile.jira.title")}
+      </h2>
+      <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">{t("profile.jira.subtitle")}</p>
+
+      {linked ? (
+        <div className="flex items-center justify-between gap-3 p-3 rounded border border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-900/20">
+          <div className="min-w-0">
+            <div className="text-sm font-medium">{user?.jiraDisplayName}</div>
+            <div className="text-[11px] text-slate-500 font-mono truncate">{user?.jiraAccountId}</div>
+          </div>
+          <Button
+            size="sm"
+            variant="ghost"
+            leftIcon={<X size={14} />}
+            loading={saveLink.isPending}
+            onClick={() => saveLink.mutate(null)}
+          >
+            {t("profile.jira.unlink")}
+          </Button>
+        </div>
+      ) : (
+        <div className="space-y-3 max-w-md">
+          <div className="flex gap-2">
+            <input
+              className="input"
+              placeholder={t("profile.jira.search_placeholder")}
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && query.trim()) {
+                  e.preventDefault();
+                  search.mutate(query.trim());
+                }
+              }}
+            />
+            <Button
+              size="md"
+              variant="secondary"
+              leftIcon={<Search size={14} />}
+              loading={search.isPending}
+              disabled={!query.trim()}
+              onClick={() => search.mutate(query.trim())}
+            >
+              {t("common.search")}
+            </Button>
+          </div>
+
+          {searched && results && results.length === 0 && (
+            <p className="text-xs text-slate-500">{t("profile.jira.no_results")}</p>
+          )}
+
+          {results && results.length > 0 && (
+            <ul className="divide-y divide-slate-100 dark:divide-slate-800 rounded border border-slate-200 dark:border-slate-700">
+              {results.map((u) => (
+                <li key={u.accountId} className="flex items-center justify-between gap-3 px-3 py-2">
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium truncate">{u.displayName}</div>
+                    <div className="text-xs text-slate-500 truncate">{u.email ?? "—"}</div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    loading={saveLink.isPending && saveLink.variables?.accountId === u.accountId}
+                    onClick={() => saveLink.mutate(u)}
+                  >
+                    {t("profile.jira.pick")}
+                  </Button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {error && <div className="mt-3"><Alert>{error}</Alert></div>}
+    </section>
+  );
+}
+
 // --- Two-factor authentication -----------------------------------------------
 
 function TwoFactorSection() {
@@ -412,6 +544,7 @@ export function Profile() {
       />
       <div className="space-y-4 mt-6 max-w-2xl">
         <ProfileSection />
+        <JiraLinkSection />
         <PasswordSection />
         <TwoFactorSection />
         <section className="rounded-lg border border-red-200 dark:border-red-900/40 p-5">

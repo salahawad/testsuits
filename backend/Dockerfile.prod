@@ -33,5 +33,8 @@ COPY prisma ./prisma
 ENV NODE_ENV=production
 EXPOSE 4000
 
-# On startup: push schema to DB, run seed, then start the server
-CMD ["sh", "-c", "npx prisma db push --skip-generate && npx prisma db seed && node dist/index.js"]
+# On startup: push schema to DB, then start the server.
+# Seeding is intentionally NOT run here. Seed data is only loaded on explicit
+# written instruction (dev boxes only). Running the seeder in prod would
+# recreate demo rows alongside real company data.
+CMD ["sh", "-c", "npx prisma db push --skip-generate && node dist/index.js"]

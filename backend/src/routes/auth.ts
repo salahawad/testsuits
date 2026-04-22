@@ -168,7 +168,15 @@ authRouter.post("/login", loginLimiter, async (req, res, next) => {
     }
 
     const userPayload = { id: user.id, email: user.email, role: user.role, companyId: user.companyId } as const;
-    const userJson = { id: user.id, email: user.email, name: user.name, role: user.role, company: { id: user.company.id, name: user.company.name, slug: user.company.slug } };
+    const userJson = {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      jiraAccountId: user.jiraAccountId,
+      jiraDisplayName: user.jiraDisplayName,
+      company: { id: user.company.id, name: user.company.name, slug: user.company.slug },
+    };
 
     // Gate: 2FA enabled — check for a trusted-device token first.
     if (user.totpEnabledAt) {
@@ -380,6 +388,8 @@ authRouter.post("/verify-email", verifyEmailLimiter, async (req, res, next) => {
         email: row.user.email,
         name: row.user.name,
         role: row.user.role,
+        jiraAccountId: row.user.jiraAccountId,
+        jiraDisplayName: row.user.jiraDisplayName,
         company: { id: row.user.company.id, name: row.user.company.name, slug: row.user.company.slug },
       },
     });

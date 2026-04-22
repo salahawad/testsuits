@@ -758,7 +758,15 @@
     "strength_good": "Good",
     "strength_strong": "Strong",
     "session": "Session",
-    "logout_hint": "Sign out of your current session on this device."
+    "logout_hint": "Sign out of your current session on this device.",
+    "jira": {
+      "title": "Jira reporter",
+      "subtitle": "Link your Jira account so bugs you file show you as the reporter — not the company's service account.",
+      "search_placeholder": "Search your Jira account by name or email",
+      "no_results": "No Jira users match that search. Try the email linked to your Jira profile.",
+      "pick": "Use this",
+      "unlink": "Unlink"
+    }
   },
   "status": {
     "PASSED": "Passed",

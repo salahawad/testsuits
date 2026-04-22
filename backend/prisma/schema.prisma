@@ -155,6 +155,11 @@ model User {
   // TOTP two-factor authentication (opt-in per user).
   totpSecret        String?
   totpEnabledAt     DateTime?
+  // Optional link to the user's Jira identity. When set, bugs created by this
+  // user include `fields.reporter.accountId` so Jira shows them as the reporter
+  // instead of the company's API-token service account.
+  jiraAccountId     String?
+  jiraDisplayName   String?
   role              Role                     @default(TESTER)
   companyId         String
   company           Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)

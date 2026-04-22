@@ -197,7 +197,7 @@ export async function createJiraBugForExecution(executionId: string) {
     include: {
       case: { include: { suite: { include: { project: { include: { company: { include: { jiraConfig: true } } } } } } } },
       run: true,
-      executedBy: { select: { name: true, email: true } },
+      executedBy: { select: { name: true, email: true, jiraAccountId: true } },
     },
   });
   if (!execution) throw httpError(404, "EXECUTION_NOT_FOUND");
@@ -246,6 +246,13 @@ export async function createJiraBugForExecution(executionId: string) {
   };
   if (project.jiraParentEpicKey) {
     fields.parent = { key: project.jiraParentEpicKey };
+  }
+  // If the tester linked their Jira identity in their profile, file the bug
+  // under that accountId so Jira shows them as reporter instead of the API
+  // token's service account. Missing / unlinked → Jira defaults to the token
+  // owner (company-wide Jira service account).
+  if (execution.executedBy?.jiraAccountId) {
+    fields.reporter = { accountId: execution.executedBy.jiraAccountId };
   }
 
   const data = await jiraFetch<{ key: string; self: string }>(
@@ -330,7 +337,10 @@ export async function createJiraBugForResult(resultId: string) {
   }
 
   const executedBy = result.executedById
-    ? await prisma.user.findUnique({ where: { id: result.executedById }, select: { name: true, email: true } })
+    ? await prisma.user.findUnique({
+        where: { id: result.executedById },
+        select: { name: true, email: true, jiraAccountId: true },
+      })
     : null;
 
   const execution = result.execution;
@@ -379,6 +389,9 @@ export async function createJiraBugForResult(resultId: string) {
   };
   if (project.jiraParentEpicKey) {
     fields.parent = { key: project.jiraParentEpicKey };
+  }
+  if (executedBy?.jiraAccountId) {
+    fields.reporter = { accountId: executedBy.jiraAccountId };
   }
 
   logger.info(

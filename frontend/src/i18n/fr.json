@@ -758,7 +758,15 @@
     "strength_good": "Bon",
     "strength_strong": "Fort",
     "session": "Session",
-    "logout_hint": "Déconnectez-vous de votre session actuelle sur cet appareil."
+    "logout_hint": "Déconnectez-vous de votre session actuelle sur cet appareil.",
+    "jira": {
+      "title": "Compte Jira",
+      "subtitle": "Liez votre compte Jira pour que les bugs que vous créez apparaissent en votre nom — et non sous le compte de service de l'entreprise.",
+      "search_placeholder": "Rechercher votre compte Jira par nom ou email",
+      "no_results": "Aucun utilisateur Jira ne correspond à cette recherche. Essayez l'email associé à votre profil Jira.",
+      "pick": "Utiliser",
+      "unlink": "Dissocier"
+    }
   },
   "status": {
     "PASSED": "Réussi",

@@ -8,6 +8,8 @@ export type User = {
   name: string;
   role: "ADMIN" | "MANAGER" | "TESTER" | "VIEWER";
   hasAvatar?: boolean;
+  jiraAccountId?: string | null;
+  jiraDisplayName?: string | null;
   company: Company;
 };
 
