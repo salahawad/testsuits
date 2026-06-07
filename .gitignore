@@ -17,3 +17,6 @@ k8s/
 # Local-only seed extensions (per-developer fixtures — not shipped publicly)
 backend/prisma/seed.hapster.ts
 backend/prisma/seed.*.local.ts
+
+# Local-only scratch files (excel imports, exports, ad-hoc fixtures)
+temp/
