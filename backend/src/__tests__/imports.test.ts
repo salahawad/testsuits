@@ -6,7 +6,7 @@ import { app } from "../app";
 import { prisma } from "../db";
 import { resetDb, disconnect } from "./helpers/db";
 import { seedBaseline, createProject, createSuite, createCase } from "./helpers/factories";
-import { CASES_SHEET, STEPS_SHEET } from "../lib/excelCases";
+import { CASES_SHEET, STEPS_SHEET, LIMITS } from "../lib/excelCases";
 
 beforeAll(async () => { await resetDb(); });
 afterAll(async () => { await disconnect(); });
@@ -192,21 +192,25 @@ describe("POST /api/imports/cases/preview", () => {
     const { manager, company } = await seedBaseline();
     const project = await createProject({ companyId: company.id });
 
-    // Valid zip, ~200 bytes on the wire, central directory declaring 4 GB.
+    // A real zip bomb: small on the wire, genuinely inflates past the cap, and
+    // its headers understate the payload as a single byte. The guard measures
+    // what actually comes out rather than believing the declaration.
     const name = Buffer.from("xl/worksheets/sheet1.xml", "utf8");
-    const payload = deflateRawSync(Buffer.alloc(0));
+    const payload = deflateRawSync(Buffer.alloc(LIMITS.maxUncompressedBytes + 4 * 1024 * 1024, 0x41), {
+      level: 9,
+    });
     const local = Buffer.alloc(30 + name.length);
     local.writeUInt32LE(0x04034b50, 0);
     local.writeUInt16LE(8, 8);
     local.writeUInt32LE(payload.length, 18);
-    local.writeUInt32LE(4_000_000_000, 22);
+    local.writeUInt32LE(1, 22); // understated on purpose
     local.writeUInt16LE(name.length, 26);
     name.copy(local, 30);
     const central = Buffer.alloc(46 + name.length);
     central.writeUInt32LE(0x02014b50, 0);
     central.writeUInt16LE(8, 10);
     central.writeUInt32LE(payload.length, 20);
-    central.writeUInt32LE(4_000_000_000, 24);
+    central.writeUInt32LE(1, 24); // understated on purpose
     central.writeUInt16LE(name.length, 28);
     name.copy(central, 46);
     const eocd = Buffer.alloc(22);
@@ -216,6 +220,7 @@ describe("POST /api/imports/cases/preview", () => {
     eocd.writeUInt32LE(central.length, 12);
     eocd.writeUInt32LE(local.length + payload.length, 16);
     const bomb = Buffer.concat([local, payload, central, eocd]);
+    expect(bomb.length).toBeLessThan(1024 * 1024); // tiny upload, huge inflate
 
     const res = await post("/api/imports/cases/preview", manager.token)
       .field("projectId", project.id)
@@ -499,6 +504,40 @@ describe("POST /api/imports/cases", () => {
     expect(res.body.issues).toEqual([
       { sheet: CASES_SHEET, row: 3, code: "IMPORT_DUPLICATE_IN_FILE", value: "Same Title" },
     ]);
+  });
+
+  it("does not create duplicates when the same file is imported concurrently", async () => {
+    const { manager, company } = await seedBaseline();
+    const project = await createProject({ companyId: company.id });
+
+    // Both requests plan against an empty project, so both plans say CREATE for
+    // every row and every suite. The per-project advisory lock plus the
+    // in-transaction re-resolution must collapse the second one into skips.
+    const [a, b] = await Promise.all([
+      post("/api/imports/cases", manager.token)
+        .field("projectId", project.id)
+        .attach("file", await sampleWorkbook(), { filename: "cases.xlsx", contentType: XLSX_MIME }),
+      post("/api/imports/cases", manager.token)
+        .field("projectId", project.id)
+        .attach("file", await sampleWorkbook(), { filename: "cases.xlsx", contentType: XLSX_MIME }),
+    ]);
+
+    // One import does the work; the other finds everything already there. It
+    // may 201 with zero creates or 400 IMPORT_NOTHING_TO_IMPORT depending on
+    // which side of the lock it lands — both are correct outcomes.
+    expect([a.status, b.status].every((s) => s === 201 || s === 400)).toBe(true);
+    expect(a.status === 201 || b.status === 201).toBe(true);
+
+    const suites = await prisma.testSuite.findMany({ where: { projectId: project.id } });
+    expect(suites).toHaveLength(3);
+    expect(suites.filter((s) => s.name === "LMS")).toHaveLength(1);
+
+    const cases = await prisma.testCase.findMany({ where: { suite: { projectId: project.id } } });
+    expect(cases).toHaveLength(2);
+    expect(new Set(cases.map((c) => c.title)).size).toBe(2);
+
+    const totalCreated = (a.body.created ?? 0) + (b.body.created ?? 0);
+    expect(totalCreated).toBe(2);
   });
 
   it("rejects a tester", async () => {

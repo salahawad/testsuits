@@ -71,26 +71,27 @@ describe("buildCaseTemplate", () => {
 
 describe("assertSafeArchive — decompression guard", () => {
   /**
-   * Build a real, valid zip whose central directory declares `uncompressed`
-   * bytes per entry while the stored deflate stream is tiny — i.e. exactly the
-   * shape of a zip bomb. Written by hand so the test doesn't depend on a
-   * compressor actually producing a huge ratio.
+   * Build a real, valid zip. `realBytes` is how much each entry ACTUALLY
+   * inflates to; `declared` is what the headers claim. The two are deliberately
+   * separate: the size fields are attacker-controlled, so the guard must not
+   * believe them.
    */
-  function zipWithDeclaredSizes(entries: Array<{ name: string; uncompressed: number }>): Buffer {
+  function craftZip(entries: Array<{ name: string; realBytes: number; declared?: number }>): Buffer {
     const locals: Buffer[] = [];
     const centrals: Buffer[] = [];
     let offset = 0;
 
     for (const e of entries) {
       const name = Buffer.from(e.name, "utf8");
-      const payload = deflateRawSync(Buffer.alloc(0));
+      const payload = deflateRawSync(Buffer.alloc(e.realBytes, 0x41), { level: 9 });
+      const declared = e.declared ?? e.realBytes;
 
       const local = Buffer.alloc(30 + name.length);
       local.writeUInt32LE(0x04034b50, 0);
       local.writeUInt16LE(20, 4);
       local.writeUInt16LE(8, 8); // deflate
       local.writeUInt32LE(payload.length, 18);
-      local.writeUInt32LE(e.uncompressed, 22);
+      local.writeUInt32LE(declared, 22);
       local.writeUInt16LE(name.length, 26);
       name.copy(local, 30);
       locals.push(local, payload);
@@ -100,7 +101,7 @@ describe("assertSafeArchive — decompression guard", () => {
       central.writeUInt16LE(20, 6);
       central.writeUInt16LE(8, 10);
       central.writeUInt32LE(payload.length, 20);
-      central.writeUInt32LE(e.uncompressed, 24);
+      central.writeUInt32LE(declared, 24);
       central.writeUInt16LE(name.length, 28);
       central.writeUInt32LE(offset, 42);
       name.copy(central, 46);
@@ -120,40 +121,49 @@ describe("assertSafeArchive — decompression guard", () => {
     return Buffer.concat([...locals, cd, eocd]);
   }
 
-  it("accepts the real template", () => {
+  const OVER_CAP = LIMITS.maxUncompressedBytes + 8 * 1024 * 1024;
+
+  it("accepts the real template", async () => {
     // Sanity check that the guard doesn't reject legitimate workbooks.
-    return buildCaseTemplate().then((buf) => expect(() => assertSafeArchive(buf)).not.toThrow());
+    await expect(assertSafeArchive(await buildCaseTemplate())).resolves.toBeUndefined();
   });
 
-  it("rejects an archive that declares more than the uncompressed limit", () => {
-    const bomb = zipWithDeclaredSizes([
-      { name: "xl/worksheets/sheet1.xml", uncompressed: 4_000_000_000 },
-    ]);
-    expect(bomb.length).toBeLessThan(1024); // tiny on the wire...
-    expect(() => assertSafeArchive(bomb)).toThrow("IMPORT_ARCHIVE_TOO_LARGE"); // ...huge inflated
+  it("measures actual inflated bytes rather than trusting the declared size", async () => {
+    // Regression: the declared size is attacker-controlled. A zip claiming one
+    // byte per entry must still be caught when it really inflates past the cap.
+    const bomb = craftZip([{ name: "xl/worksheets/sheet1.xml", realBytes: OVER_CAP, declared: 1 }]);
+    expect(bomb.length).toBeLessThan(512 * 1024); // small on the wire...
+    await expect(assertSafeArchive(bomb)).rejects.toThrow("IMPORT_ARCHIVE_TOO_LARGE"); // ...caught anyway
   });
 
-  it("rejects an archive whose entries sum past the limit", () => {
+  it("allows a lying declaration when the real content is within the cap", async () => {
+    // The declaration being wrong is not itself an error — only the real size
+    // matters, so honest-but-mislabelled files still import.
+    const ok = craftZip([{ name: "sheet.xml", realBytes: 2 * 1024 * 1024, declared: 1 }]);
+    await expect(assertSafeArchive(ok)).resolves.toBeUndefined();
+  });
+
+  it("rejects an archive whose entries sum past the limit", async () => {
     const chunk = Math.ceil(LIMITS.maxUncompressedBytes / 4);
-    const bomb = zipWithDeclaredSizes(
-      Array.from({ length: 5 }, (_, i) => ({ name: `part${i}.xml`, uncompressed: chunk })),
+    const bomb = craftZip(
+      Array.from({ length: 5 }, (_, i) => ({ name: `part${i}.xml`, realBytes: chunk, declared: 1 })),
     );
-    expect(() => assertSafeArchive(bomb)).toThrow("IMPORT_ARCHIVE_TOO_LARGE");
+    await expect(assertSafeArchive(bomb)).rejects.toThrow("IMPORT_ARCHIVE_TOO_LARGE");
   });
 
-  it("rejects an archive with an absurd number of entries", () => {
-    const bomb = zipWithDeclaredSizes(
-      Array.from({ length: LIMITS.maxArchiveEntries + 1 }, (_, i) => ({ name: `f${i}`, uncompressed: 1 })),
+  it("rejects an archive with an absurd number of entries", async () => {
+    const bomb = craftZip(
+      Array.from({ length: LIMITS.maxArchiveEntries + 1 }, (_, i) => ({ name: `f${i}`, realBytes: 1 })),
     );
-    expect(() => assertSafeArchive(bomb)).toThrow("IMPORT_ARCHIVE_TOO_LARGE");
+    await expect(assertSafeArchive(bomb)).rejects.toThrow("IMPORT_ARCHIVE_TOO_LARGE");
   });
 
-  it("rejects a file with no zip end-of-central-directory record", () => {
-    expect(() => assertSafeArchive(Buffer.alloc(200))).toThrow("IMPORT_FILE_UNREADABLE");
+  it("rejects a file with no zip end-of-central-directory record", async () => {
+    await expect(assertSafeArchive(Buffer.alloc(200))).rejects.toThrow("IMPORT_FILE_UNREADABLE");
   });
 
   it("runs before ExcelJS inflates anything", async () => {
-    const bomb = zipWithDeclaredSizes([{ name: "big.xml", uncompressed: 4_000_000_000 }]);
+    const bomb = craftZip([{ name: "big.xml", realBytes: OVER_CAP, declared: 1 }]);
     await expect(parseCaseWorkbook(bomb)).rejects.toThrow("IMPORT_ARCHIVE_TOO_LARGE");
   });
 });

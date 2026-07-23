@@ -87,6 +87,13 @@ type ImportPlan = {
 
 const VIRTUAL_PREFIX = "virtual:";
 
+/**
+ * Namespace for the per-project `pg_advisory_xact_lock` taken during a commit.
+ * Advisory locks share one global space, so the namespace keeps the import
+ * lock from colliding with any other subsystem that starts using them.
+ */
+const IMPORT_LOCK_NAMESPACE = 21587;
+
 function suiteKey(parentRef: string | null, name: string) {
   return `${parentRef ?? "#root"}::${name.trim().toLowerCase()}`;
 }
@@ -305,16 +312,25 @@ importsRouter.post("/cases", requireManager, uploadSingle("file"), async (req: A
 
     const result = await prisma.$transaction(
       async (tx) => {
+        // 0. Serialise imports for this project.
+        //
+        //    The plan was computed outside the transaction, so without this two
+        //    concurrent imports could both decide to CREATE the same suite or
+        //    case and both succeed — there is no unique index on
+        //    (projectId, parentId, name) to arbitrate, and adding one is a
+        //    product decision (same-named sibling suites are legal today).
+        //    A transaction-scoped advisory lock gives us the mutual exclusion
+        //    without a schema change: it is taken per project, released
+        //    automatically at commit or rollback, and leaves imports into other
+        //    projects fully parallel. Every read below therefore happens while
+        //    no other import can be mutating this project.
+        //    `$executeRaw`, not `$queryRaw`: the function returns void, which
+        //    Prisma cannot deserialize into a row.
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(${IMPORT_LOCK_NAMESPACE}::int4, hashtext(${project.id}))`;
+
         // 1. Materialise missing suites root-first so parents exist before
         //    children. `suitesToCreate` is already in that order, and its Nth
         //    entry is exactly the `virtual:N` ref buildPlan handed out.
-        //
-        //    Re-reading inside the transaction closes the common plan-then-
-        //    commit gap, but under READ COMMITTED it cannot fully serialise two
-        //    imports racing on the same new suite name: there is no unique
-        //    index on (projectId, parentId, name) to arbitrate. Adding one is a
-        //    product decision — sibling suites sharing a name is legal today —
-        //    so this stays best-effort and is called out in the README.
         const suiteIdByKey = new Map<string, string>();
         for (const s of await tx.testSuite.findMany({
           where: { projectId: project.id },
@@ -353,15 +369,45 @@ importsRouter.post("/cases", requireManager, uploadSingle("file"), async (req: A
         const resolve = (ref: string) => (ref.startsWith(VIRTUAL_PREFIX) ? refToId.get(ref)! : ref);
 
         // 2. Create / update cases.
+        //
+        //    Re-resolve every decision against the catalogue as it exists under
+        //    the lock. `plan` was built before the lock was held, so a case it
+        //    marked CREATE may already exist (and one it marked UPDATE may have
+        //    been deleted). This read is authoritative; the plan is only a
+        //    proposal shown to the user.
+        const liveCaseByKey = new Map<string, string>();
+        for (const c of await tx.testCase.findMany({
+          where: { suite: { projectId: project.id } },
+          select: { id: true, suiteId: true, title: true },
+          orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+        })) {
+          const key = caseKey(c.suiteId, c.title);
+          if (!liveCaseByKey.has(key)) liveCaseByKey.set(key, c.id);
+        }
+
         const created: string[] = [];
         const updated: string[] = [];
+        let skipped = 0;
 
         for (const d of plan.decisions) {
-          if (d.action === "SKIP") continue;
           const source = parsedByExternalId.get(d.externalId)!;
           const suiteId = resolve(d.suiteRef);
+          const key = caseKey(suiteId, source.title);
+          const liveId = liveCaseByKey.get(key);
 
-          if (d.action === "CREATE") {
+          // Recompute the action from live state rather than trusting the plan.
+          const action: CaseDecision["action"] = liveId
+            ? opts.duplicateStrategy === "UPDATE"
+              ? "UPDATE"
+              : "SKIP"
+            : "CREATE";
+
+          if (action === "SKIP") {
+            skipped++;
+            continue;
+          }
+
+          if (action === "CREATE") {
             const row = await tx.testCase.create({
               data: {
                 suiteId,
@@ -377,12 +423,14 @@ importsRouter.post("/cases", requireManager, uploadSingle("file"), async (req: A
               select: { id: true },
             });
             created.push(row.id);
+            // Keep the index current so a later row can't create a twin.
+            liveCaseByKey.set(key, row.id);
             continue;
           }
 
           // UPDATE — snapshot the current state into history first, exactly as
           // PATCH /api/cases/:id does, so the revision trail stays complete.
-          const current = await tx.testCase.findUnique({ where: { id: d.existingCaseId! } });
+          const current = await tx.testCase.findUnique({ where: { id: liveId! } });
           if (!current) continue;
           const last = await tx.testCaseRevision.findFirst({
             where: { caseId: current.id },
@@ -439,7 +487,7 @@ importsRouter.post("/cases", requireManager, uploadSingle("file"), async (req: A
           });
         }
 
-        return { created: created.length, updated: updated.length, suitesCreated };
+        return { created: created.length, updated: updated.length, skipped, suitesCreated };
       },
       { maxWait: 15_000, timeout: 120_000 },
     );
@@ -452,7 +500,7 @@ importsRouter.post("/cases", requireManager, uploadSingle("file"), async (req: A
         created: result.created,
         updated: result.updated,
         suitesCreated: result.suitesCreated,
-        skipped: plan.counts.skip,
+        skipped: result.skipped,
         skippedInvalidRows: opts.skipInvalidRows ? plan.issues.length : 0,
         duplicateStrategy: opts.duplicateStrategy,
       },
@@ -464,7 +512,7 @@ importsRouter.post("/cases", requireManager, uploadSingle("file"), async (req: A
       projectId: project.id,
       created: result.created,
       updated: result.updated,
-      skipped: plan.counts.skip,
+      skipped: result.skipped,
       suitesCreated: result.suitesCreated,
       issues: plan.issues,
     });

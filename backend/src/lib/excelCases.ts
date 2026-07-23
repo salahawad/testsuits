@@ -1,4 +1,5 @@
 import ExcelJS from "exceljs";
+import { createInflateRaw } from "zlib";
 
 /**
  * Excel import/export for the test-case catalogue.
@@ -46,12 +47,14 @@ export const LIMITS = {
   // during parsing where the row number is still available to the user.
   maxEstimatedMinutes: 100_000,
   /**
-   * Total *uncompressed* size allowed across all entries of the .xlsx zip.
+   * Total *measured* inflated size allowed across all entries of the .xlsx zip.
    * The multer limit only caps the compressed upload — XML compresses well
    * enough that a few MB can inflate to gigabytes, and ExcelJS expands the
-   * whole archive before any row limit here applies.
+   * whole archive before any row limit here applies. A workbook at the case and
+   * step limits above lands in the low tens of MB, so this leaves ample room
+   * while bounding how much a hostile file can make us decompress.
    */
-  maxUncompressedBytes: 150 * 1024 * 1024,
+  maxUncompressedBytes: 64 * 1024 * 1024,
   /** A legitimate workbook has a handful of parts, not tens of thousands. */
   maxArchiveEntries: 512,
 };
@@ -351,6 +354,7 @@ const EOCD_SIG = 0x06054b50;
 const ZIP64_LOCATOR_SIG = 0x07064b50;
 const ZIP64_EOCD_SIG = 0x06064b50;
 const CD_ENTRY_SIG = 0x02014b50;
+const LOCAL_HEADER_SIG = 0x04034b50;
 const UINT32_MAX = 0xffffffff;
 
 /** Locate the End Of Central Directory record (it sits at the tail of a zip). */
@@ -364,81 +368,139 @@ function findEocd(buf: Buffer): number {
   return -1;
 }
 
-/**
- * Total the uncompressed sizes declared in the zip central directory and reject
- * archives that would inflate past the limit. Throws WorkbookError; never
- * inflates anything.
- */
-export function assertSafeArchive(buffer: Buffer): void {
+type CdEntry = {
+  method: number;
+  compressedSize: number;
+  localHeaderOffset: number;
+};
+
+/** Parse the central directory into entry records. Throws WorkbookError. */
+function readCentralDirectory(buffer: Buffer): { entries: CdEntry[]; cdOffset: number } {
   if (buffer.length < 22) throw new WorkbookError("IMPORT_FILE_UNREADABLE");
 
-  try {
-    const eocd = findEocd(buffer);
-    if (eocd < 0) throw new WorkbookError("IMPORT_FILE_UNREADABLE");
+  const eocd = findEocd(buffer);
+  if (eocd < 0) throw new WorkbookError("IMPORT_FILE_UNREADABLE");
 
-    let entries = buffer.readUInt16LE(eocd + 10);
-    let cdOffset = buffer.readUInt32LE(eocd + 16);
+  let count = buffer.readUInt16LE(eocd + 10);
+  let cdOffset = buffer.readUInt32LE(eocd + 16);
 
-    // Zip64: the 32-bit fields saturate and the real values live in a separate
-    // record pointed at by a locator immediately before the EOCD.
-    if (entries === 0xffff || cdOffset === UINT32_MAX) {
-      const locator = eocd - 20;
-      if (locator < 0 || buffer.readUInt32LE(locator) !== ZIP64_LOCATOR_SIG) {
-        throw new WorkbookError("IMPORT_FILE_UNREADABLE");
-      }
-      const z64 = Number(buffer.readBigUInt64LE(locator + 8));
-      if (!Number.isSafeInteger(z64) || z64 < 0 || z64 + 56 > buffer.length) {
-        throw new WorkbookError("IMPORT_FILE_UNREADABLE");
-      }
-      if (buffer.readUInt32LE(z64) !== ZIP64_EOCD_SIG) throw new WorkbookError("IMPORT_FILE_UNREADABLE");
-      entries = Number(buffer.readBigUInt64LE(z64 + 32));
-      cdOffset = Number(buffer.readBigUInt64LE(z64 + 48));
+  // Zip64: the 32-bit fields saturate and the real values live in a separate
+  // record pointed at by a locator immediately before the EOCD.
+  if (count === 0xffff || cdOffset === UINT32_MAX) {
+    const locator = eocd - 20;
+    if (locator < 0 || buffer.readUInt32LE(locator) !== ZIP64_LOCATOR_SIG) {
+      throw new WorkbookError("IMPORT_FILE_UNREADABLE");
     }
-
-    if (!Number.isSafeInteger(entries) || entries < 0 || entries > LIMITS.maxArchiveEntries) {
-      throw new WorkbookError("IMPORT_ARCHIVE_TOO_LARGE");
+    const z64 = Number(buffer.readBigUInt64LE(locator + 8));
+    if (!Number.isSafeInteger(z64) || z64 < 0 || z64 + 56 > buffer.length) {
+      throw new WorkbookError("IMPORT_FILE_UNREADABLE");
     }
+    if (buffer.readUInt32LE(z64) !== ZIP64_EOCD_SIG) throw new WorkbookError("IMPORT_FILE_UNREADABLE");
+    count = Number(buffer.readBigUInt64LE(z64 + 32));
+    cdOffset = Number(buffer.readBigUInt64LE(z64 + 48));
+  }
 
+  if (!Number.isSafeInteger(count) || count < 0 || count > LIMITS.maxArchiveEntries) {
+    throw new WorkbookError("IMPORT_ARCHIVE_TOO_LARGE");
+  }
+
+  const entries: CdEntry[] = [];
+  let p = cdOffset;
+  for (let i = 0; i < count; i++) {
+    if (p + 46 > buffer.length || buffer.readUInt32LE(p) !== CD_ENTRY_SIG) {
+      throw new WorkbookError("IMPORT_FILE_UNREADABLE");
+    }
+    const method = buffer.readUInt16LE(p + 10);
+    const compressedSize = buffer.readUInt32LE(p + 20);
+    const nameLen = buffer.readUInt16LE(p + 28);
+    const extraLen = buffer.readUInt16LE(p + 30);
+    const commentLen = buffer.readUInt16LE(p + 32);
+    const localHeaderOffset = buffer.readUInt32LE(p + 42);
+
+    entries.push({ method, compressedSize, localHeaderOffset });
+    p += 46 + nameLen + extraLen + commentLen;
+  }
+
+  return { entries, cdOffset };
+}
+
+/**
+ * Inflate `slice`, counting output bytes and aborting the moment the running
+ * total exceeds `budget`. Output is discarded as it arrives, so peak memory is
+ * a single zlib chunk regardless of how large the entry claims — or turns out —
+ * to be.
+ */
+function countInflatedBytes(slice: Buffer, budget: number): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const inflate = createInflateRaw();
     let total = 0;
-    let p = cdOffset;
-    for (let i = 0; i < entries; i++) {
-      if (p + 46 > buffer.length) throw new WorkbookError("IMPORT_FILE_UNREADABLE");
-      if (buffer.readUInt32LE(p) !== CD_ENTRY_SIG) throw new WorkbookError("IMPORT_FILE_UNREADABLE");
+    let settled = false;
 
-      let uncompressed = buffer.readUInt32LE(p + 24);
-      const nameLen = buffer.readUInt16LE(p + 28);
-      const extraLen = buffer.readUInt16LE(p + 30);
-      const commentLen = buffer.readUInt16LE(p + 32);
+    const finish = (fn: () => void) => {
+      if (settled) return;
+      settled = true;
+      inflate.removeAllListeners();
+      inflate.destroy();
+      fn();
+    };
 
-      if (uncompressed === UINT32_MAX) {
-        // Walk the extra field for the Zip64 extended information header. Its
-        // 8-byte uncompressed size comes first when the CD field saturated.
-        const extraStart = p + 46 + nameLen;
-        let e = extraStart;
-        const extraEnd = extraStart + extraLen;
-        while (e + 4 <= extraEnd && e + 4 <= buffer.length) {
-          const headerId = buffer.readUInt16LE(e);
-          const size = buffer.readUInt16LE(e + 2);
-          if (headerId === 0x0001 && size >= 8 && e + 4 + 8 <= buffer.length) {
-            uncompressed = Number(buffer.readBigUInt64LE(e + 4));
-            break;
-          }
-          e += 4 + size;
-        }
-      }
+    inflate.on("data", (chunk: Buffer) => {
+      total += chunk.length;
+      if (total > budget) finish(() => reject(new WorkbookError("IMPORT_ARCHIVE_TOO_LARGE")));
+    });
+    inflate.on("end", () => finish(() => resolve(total)));
+    // A truncated or corrupt deflate stream means the file is malformed — but
+    // if we already blew the budget the rejection above has priority.
+    inflate.on("error", () => finish(() => reject(new WorkbookError("IMPORT_FILE_UNREADABLE"))));
+    inflate.end(slice);
+  });
+}
 
-      if (!Number.isFinite(uncompressed) || uncompressed < 0) {
-        throw new WorkbookError("IMPORT_FILE_UNREADABLE");
-      }
-      total += uncompressed;
-      if (total > LIMITS.maxUncompressedBytes) throw new WorkbookError("IMPORT_ARCHIVE_TOO_LARGE");
+/**
+ * Reject archives that inflate past the limit, BEFORE handing bytes to ExcelJS.
+ *
+ * The sizes declared in the central directory are attacker-controlled — a zip
+ * can claim one byte and inflate to gigabytes — so they are treated only as a
+ * cheap early reject. The real check decompresses each entry ourselves and
+ * counts the bytes that actually come out, aborting the stream at the cap.
+ */
+export async function assertSafeArchive(buffer: Buffer): Promise<void> {
+  const { entries, cdOffset } = readCentralDirectory(buffer);
 
-      p += 46 + nameLen + extraLen + commentLen;
+  let total = 0;
+  for (const entry of entries) {
+    const lho = entry.localHeaderOffset;
+    if (lho + 30 > buffer.length || buffer.readUInt32LE(lho) !== LOCAL_HEADER_SIG) {
+      throw new WorkbookError("IMPORT_FILE_UNREADABLE");
     }
-  } catch (e) {
-    if (e instanceof WorkbookError) throw e;
-    // Any out-of-range read means the file isn't a well-formed zip.
-    throw new WorkbookError("IMPORT_FILE_UNREADABLE");
+    // The local header's extra field can differ in length from the central
+    // one's, so the data offset must be derived from the local record.
+    const nameLen = buffer.readUInt16LE(lho + 26);
+    const extraLen = buffer.readUInt16LE(lho + 28);
+    const dataStart = lho + 30 + nameLen + extraLen;
+    if (dataStart > buffer.length) throw new WorkbookError("IMPORT_FILE_UNREADABLE");
+
+    // Trust the declared compressed size only to bound the slice, and clamp it
+    // to the start of the central directory. A wrong value can only make the
+    // deflate stream fail to parse — it cannot smuggle extra output past the
+    // counter below.
+    const declared = entry.compressedSize;
+    const end =
+      declared > 0 && declared !== UINT32_MAX && dataStart + declared <= buffer.length
+        ? dataStart + declared
+        : Math.max(dataStart, Math.min(cdOffset, buffer.length));
+
+    const budget = LIMITS.maxUncompressedBytes - total;
+    if (budget <= 0) throw new WorkbookError("IMPORT_ARCHIVE_TOO_LARGE");
+
+    if (entry.method === 0) {
+      // Stored: output size == input size, already bounded by the upload cap.
+      total += end - dataStart;
+      if (total > LIMITS.maxUncompressedBytes) throw new WorkbookError("IMPORT_ARCHIVE_TOO_LARGE");
+      continue;
+    }
+
+    total += await countInflatedBytes(buffer.subarray(dataStart, end), budget);
   }
 }
 
@@ -449,7 +511,7 @@ export function assertSafeArchive(buffer: Buffer): void {
  */
 export async function parseCaseWorkbook(buffer: Buffer): Promise<ParseResult> {
   // Must run before ExcelJS touches the bytes — see assertSafeArchive.
-  assertSafeArchive(buffer);
+  await assertSafeArchive(buffer);
 
   const wb = new ExcelJS.Workbook();
   try {

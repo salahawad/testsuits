@@ -363,11 +363,17 @@ The commit runs in a single transaction — suites and cases either all land or 
 
 `.xlsx` only, 5 MB per upload, 1000 cases and 10000 steps per file, suite paths up to 6 levels. Both endpoints are manager-gated (`MANAGER` or `ADMIN`) and scoped to the caller's company — importing into another tenant's project returns `404`.
 
-Because an `.xlsx` is a zip, the 5 MB cap only bounds the *compressed* bytes. Before the workbook is inflated, the zip central directory is totalled and the file is rejected (`IMPORT_ARCHIVE_TOO_LARGE`) if it declares more than 150 MB uncompressed or more than 512 entries — otherwise a small "zip bomb" could exhaust the API process for every tenant on the instance.
+Because an `.xlsx` is a zip, the 5 MB cap only bounds the *compressed* bytes — a small "zip bomb" could otherwise exhaust the API process for every tenant on the instance. Before ExcelJS is handed the file, each entry is decompressed by the importer itself and the bytes that actually come out are counted, aborting the stream the moment the running total passes 64 MiB (`IMPORT_ARCHIVE_TOO_LARGE`). Archives with more than 512 entries are refused outright.
+
+The sizes declared in the zip central directory are **not** trusted: they are attacker-controlled, and a file can claim one byte per entry while really inflating to gigabytes. They serve only as a cheap early reject. Output is discarded as it is counted, so peak memory stays flat regardless of what the archive claims or contains.
 
 ### Known limitation: duplicate suite names
 
-The schema has no unique constraint on `(projectId, parentId, name)` for suites, or on case title within a suite — two sibling suites may legitimately share a name. The importer therefore resolves a colliding name deterministically (oldest row wins, ordered by `createdAt`) rather than arbitrarily, and re-reads the suite tree inside the commit transaction. That closes the ordinary plan-then-commit gap, but two imports racing on the *same new* suite name under READ COMMITTED can still produce a duplicate subtree. Adding the unique index would fix it outright and is worth doing if you decide same-named siblings should never be allowed.
+The schema has no unique constraint on `(projectId, parentId, name)` for suites, or on case title within a suite — two sibling suites may legitimately share a name. The importer therefore resolves a colliding name deterministically (oldest row wins, ordered by `createdAt`).
+
+Concurrency is handled with a transaction-scoped Postgres advisory lock taken per project (`pg_advisory_xact_lock`) at the start of the commit. Two imports into the same project serialise; imports into different projects still run in parallel, and the lock is released automatically on commit or rollback. Because the preview is computed before the lock is held, every decision is **re-resolved against the catalogue read under the lock** before anything is written — a row the preview called `CREATE` becomes a skip (or an update) if it turns out to already exist. The preview is a proposal; the in-transaction read is authoritative, which is why the committed counts can legitimately differ from the ones previewed.
+
+This makes concurrent *imports* safe without a schema migration. It does not serialise an import against a case created through `POST /api/cases` at the same instant — that path has no such constraint today either. Adding the unique index would close both and is worth doing if you decide same-named siblings should never be allowed.
 
 ## Domain model
 
@@ -630,6 +636,7 @@ Set `CORS_ALLOWED_ORIGINS` to a comma-separated list of origins the browser may 
 - **Attachments** are stored privately in MinIO; downloads go through signed URLs served by `S3_PUBLIC_ENDPOINT`.
 - **`.env`** is gitignored by default. Never commit a populated `.env` or `seed.hapster.ts`.
 - **All multi-tenant reads** are scoped by `companyId` at the query level (see `backend/src/middleware/scope.ts`). Cross-tenant lookups return 404 (not 403) so existence isn't leaked.
+- **`uuid` override in `backend/package.json`.** exceljs 4.4.0 pins `uuid@^8.3.2`, which `npm audit` flags for [GHSA-w5hq-g745-h8pq](https://github.com/advisories/GHSA-w5hq-g745-h8pq) — a missing buffer bounds check in the v3/v5/v6 generators when a `buf` argument is supplied. exceljs only ever calls `v4` and never passes `buf`, so the vulnerable path is unreachable, but `npm audit fix --force` would "resolve" it by downgrading exceljs to 3.4.0 (a breaking change). An `overrides` entry pins the patched `uuid@^11.1.1` under exceljs instead, which keeps the audit clean and still resolves to a CJS build under the `require` condition that exceljs uses. Drop the override once exceljs ships a newer uuid.
 
 ## Troubleshooting
 
