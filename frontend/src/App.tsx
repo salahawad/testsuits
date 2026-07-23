@@ -26,6 +26,7 @@ import { ForgotPassword } from "./pages/ForgotPassword";
 import { ResetPassword } from "./pages/ResetPassword";
 import { AcceptInvite } from "./pages/AcceptInvite";
 import { Requirements } from "./pages/Requirements";
+import { ImportCases } from "./pages/ImportCases";
 import { Profile } from "./pages/Profile";
 import { VerifyEmail } from "./pages/VerifyEmail";
 
@@ -73,6 +74,7 @@ export function App() {
       <Route path="/projects/:id/milestones" element={<Protected><Milestones /></Protected>} />
       <Route path="/projects/:id/settings" element={<Protected><ProjectSettings /></Protected>} />
       <Route path="/projects/:id/requirements" element={<Protected><Requirements /></Protected>} />
+      <Route path="/projects/:id/import" element={<Protected><ImportCases /></Protected>} />
       <Route path="/suites/:id" element={<Protected><SuiteDetail /></Protected>} />
       <Route path="/cases/:id" element={<Protected><CaseDetail /></Protected>} />
       <Route path="/runs" element={<Protected><Runs /></Protected>} />

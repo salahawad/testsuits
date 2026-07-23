@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, FolderTree, Plus } from "lucide-react";
+import { ArrowLeft, FileSpreadsheet, FolderTree, Plus } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -85,6 +85,11 @@ export function ProjectDetail() {
         <div className="flex gap-2">
           <Link to={`/projects/${project.id}/milestones`} className="btn-secondary">{t("projects.milestones")}</Link>
           <Link to={`/projects/${project.id}/requirements`} className="btn-secondary">{t("requirements.title")}</Link>
+          {isManager && (
+            <Link to={`/projects/${project.id}/import`} className="btn-secondary">
+              <FileSpreadsheet size={16} /> {t("import.button")}
+            </Link>
+          )}
           {isManager && <Link to={`/projects/${project.id}/settings`} className="btn-secondary">{t("projects.settings")}</Link>}
           <Link to={`/runs?projectId=${project.id}`} className="btn-secondary">{t("projects.test_runs")}</Link>
           <button className="btn-primary" onClick={() => setOpen(true)}><Plus size={16} /> {t("projects.new_suite")}</button>

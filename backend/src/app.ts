@@ -21,6 +21,7 @@ import { sharedStepsRouter } from "./routes/sharedSteps";
 import { webhooksRouter } from "./routes/webhooks";
 import { tokensRouter } from "./routes/tokens";
 import { requirementsRouter } from "./routes/requirements";
+import { importsRouter } from "./routes/imports";
 import { clientLogRouter } from "./routes/clientLog";
 import { samlRouter } from "./routes/saml";
 import { scimRouter, scimTokensRouter } from "./routes/scim";
@@ -94,6 +95,7 @@ app.use("/api/shared-steps", requireAuth, sharedStepsRouter);
 app.use("/api/webhooks", requireAuth, webhooksRouter);
 app.use("/api/tokens", requireAuth, requireManager, tokensRouter);
 app.use("/api/requirements", requireAuth, requirementsRouter);
+app.use("/api/imports", requireAuth, importsRouter);
 app.use("/api/audit", requireAuth, auditRouter);
 app.use("/api/saml", (req, _res, next) => {
   // Config routes require auth; /login and /acs are public (IdP-facing).
